@@ -4,6 +4,7 @@ struct ResultView: View {
     let result: GameResult
     var canRematch: Bool = false
     var onRematch: (() -> Void)?
+    var onMainMenu: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
 
     private var headline: String {
@@ -126,7 +127,11 @@ struct ResultView: View {
             }
 
             Button {
-                dismiss()
+                if let onMainMenu = onMainMenu {
+                    onMainMenu()
+                } else {
+                    dismiss()
+                }
             } label: {
                 Text("Ana Menü")
                     .font(AppTheme.Font.body())

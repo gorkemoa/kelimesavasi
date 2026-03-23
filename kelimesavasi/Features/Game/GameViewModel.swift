@@ -225,6 +225,7 @@ final class GameViewModel: ObservableObject {
         try? multipeerService?.send(
             PeerMessage(type: .rematchAccepted, payload: Data())
         )
+        NotificationCenter.default.post(name: NSNotification.Name("RestartGame"), object: nil)
     }
 
     // MARK: - Private helpers
@@ -308,8 +309,12 @@ final class GameViewModel: ObservableObject {
                 }
             }
         case .rematchRequest:
-            // Handled at lobby/result level
-            break
+            showToast("Rakip rövanş istiyor!")
+            NotificationCenter.default.post(name: NSNotification.Name("PeerRematchRequested"), object: nil)
+        case .rematchAccepted:
+            showToast("Rövanş kabul edildi!")
+            // When rematch is accepted, tell the lobby to restart
+            NotificationCenter.default.post(name: NSNotification.Name("RestartGame"), object: nil)
         default:
             break
         }

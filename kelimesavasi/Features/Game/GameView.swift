@@ -25,6 +25,10 @@ struct GameView: View {
                     .tint(AppTheme.Colors.primary)
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ExitToMainMenu"))) { _ in
+            env.multipeerService.disconnect()
+            dismiss()
+        }
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(mode == .duel)
         .toolbar { toolbarContent }
@@ -157,7 +161,15 @@ private struct GameContentView: View {
             if let result = viewModel.gameResult {
                 ResultView(result: result,
                            canRematch: mode == .duel,
-                           onRematch: { viewModel.requestRematch() })
+                           onRematch: { viewModel.requestRematch() },
+                           onMainMenu: {
+                                viewModel.showResult = false
+                                env.multipeerService.disconnect()
+                                // No direct access to parent 'dismiss' here, 
+                                // so we use a notification or rely on viewModel state if needed,
+                                // but the most reliable way is to let the parent handle it.
+                                NotificationCenter.default.post(name: NSNotification.Name("ExitToMainMenu"), object: nil)
+                           })
             }
         }
     }

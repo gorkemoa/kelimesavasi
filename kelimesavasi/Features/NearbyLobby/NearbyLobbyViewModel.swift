@@ -106,6 +106,9 @@ final class NearbyLobbyViewModel: ObservableObject {
 
     func startHosting() {
         isHost = true
+        gameStarted = false
+        receivedPlayerReady = false
+        pendingTargetWord = nil
         phase = .hosting
         sessionManager.updatePlayerName(settings.playerName)
         discoveryService.startAdvertising(peer: sessionManager.myPeerID)
@@ -115,6 +118,7 @@ final class NearbyLobbyViewModel: ObservableObject {
 
     func startJoining() {
         isHost = false
+        gameStarted = false
         phase = .joining
         sessionManager.updatePlayerName(settings.playerName)
         discoveryService.startBrowsing(peer: sessionManager.myPeerID)
@@ -165,7 +169,6 @@ final class NearbyLobbyViewModel: ObservableObject {
         switch message.type {
         case .gameStarted:
             // Guest receives game start from host
-            guard !gameStarted else { return }
             guard let payload = try? message.decode(GameStartedPayload.self) else { return }
             playerReadyTask?.cancel()
             playerReadyTask = nil
@@ -174,13 +177,26 @@ final class NearbyLobbyViewModel: ObservableObject {
 
         case .playerReady:
             // Host receives ready signal from guest — MC channels are proven open
-            guard !gameStarted else { return }
             receivedPlayerReady = true
             if pendingTargetWord != nil {
                 triggerGameStart()
             }
             // else: word not yet picked, triggerGameStart() will be called from pickTargetWord()
 
+        case .rematchRequest:
+            // Forward to game VM if active
+            NotificationCenter.default.post(name: NSNotification.Name("PeerRematchRequested"), object: nil)
+        case .rematchAccepted:
+            NotificationCenter.default.post(name: NSNotification.Name("RestartGame"), object: nil)
+            if isHost {
+                gameStarted = false
+                receivedPlayerReady = false
+                pendingTargetWord = nil
+                pickTargetWord()
+            } else {
+                gameStarted = false
+                startSendingPlayerReady()
+            }
         default:
             break
         }
@@ -192,6 +208,8 @@ final class NearbyLobbyViewModel: ObservableObject {
         if isHost {
             discoveryService.stopAll()
             phase = .connecting  // keep spinner while waiting for guest's playerReady
+            receivedPlayerReady = false
+            pendingTargetWord = nil
             pickTargetWord()
         } else {
             discoveryService.stopAll()
