@@ -1,0 +1,313 @@
+import Foundation
+import Observation
+
+// MARK: - GameViewModel
+@Observable
+final class GameViewModel {
+
+    // MARK: Game state
+    private(set) var session: GameSession
+    var currentInput: String = ""
+    var keyStates: [String: TileState] = [:]
+    var phase: GamePhase { session.phase }
+
+    // MARK: UI feedback
+    var shakingRow: Int?
+    var revealingRow: Int?
+    var toastMessage: String?
+    var gameResult: GameResult?
+    var showResult: Bool = false
+
+    // MARK: Duel state
+    var isHost: Bool
+    var opponentPerformance: PlayerPerformance?
+    var opponentGuessCount: Int { session.opponentGuessCount }
+    var isOpponentDone: Bool = false
+
+    // MARK: Dependencies
+    private let engine: WordleGameEngine
+    private let settings: SettingsService
+    private let stats: StatsService
+    private let haptic = HapticHelper.shared
+    private weak var multipeerService: MultipeerSessionManager?
+
+    // MARK: Init (Solo)
+    init(session: GameSession,
+         engine: WordleGameEngine,
+         settings: SettingsService,
+         stats: StatsService) {
+        self.session = session
+        self.engine  = engine
+        self.settings = settings
+        self.stats   = stats
+        self.isHost  = false
+    }
+
+    // MARK: Init (Duel)
+    init(session: GameSession,
+         engine: WordleGameEngine,
+         settings: SettingsService,
+         stats: StatsService,
+         isHost: Bool,
+         multipeerService: MultipeerSessionManager) {
+        self.session = session
+        self.engine  = engine
+        self.settings = settings
+        self.stats   = stats
+        self.isHost  = isHost
+        self.multipeerService = multipeerService
+        subscribeToMessages()
+    }
+
+    // MARK: - Keyboard actions
+
+    func addLetter(_ letter: String) {
+        guard session.phase == .playing else { return }
+        
+        let wordLen = session.config.wordLength
+        let hintsCount = session.revealedHints.count
+        let remainingNeeded = wordLen - hintsCount
+        
+        guard currentInput.count < remainingNeeded else { return }
+        
+        currentInput += letter
+        if settings.hapticEnabled { haptic.keyPress() }
+    }
+
+    func deleteLetter() {
+        guard !currentInput.isEmpty else { return }
+        currentInput.removeLast()
+    }
+
+    func revealHint() {
+        guard session.phase == .playing else { return }
+
+        let isSolo = session.mode == .solo
+        let cost = isSolo ? 10 : 50
+
+        let target = Array(session.targetWord)
+        let wordLen = session.config.wordLength
+        
+        var unguessedIndices: [Int] = []
+        for i in 0..<wordLen {
+            let alreadyCorrect = session.guesses.contains { g in
+                g.evaluation.count > i && g.evaluation[i] == .correct
+            }
+            if !alreadyCorrect {
+                unguessedIndices.append(i)
+            }
+        }
+
+        if let index = unguessedIndices.randomElement() {
+            if stats.spendCoins(cost) {
+                let letter = String(target[index])
+                session.revealedHints[index] = letter
+                showToast("İpucu: \(index + 1). harf '\(letter.uppercased())'")
+                if settings.hapticEnabled { haptic.submitGuess() }
+            } else {
+                showToast("\(cost) Coin Gerekli!")
+            }
+        } else {
+            showToast("Tüm harfleri buldun zaten!")
+        }
+    }
+
+    func submitGuess() async {
+        guard session.phase == .playing else { return }
+        
+        // Build the word using revealed hints + current input
+        let wordLen = session.config.wordLength
+        var finalWordChars = Array(repeating: " ", count: wordLen)
+        let inputChars = Array(currentInput)
+        var inputIdx = 0
+        
+        for i in 0..<wordLen {
+            if let hint = session.revealedHints[i] {
+                finalWordChars[i] = hint.lowercased().first ?? " "
+            } else if inputIdx < inputChars.count {
+                finalWordChars[i] = inputChars[inputIdx]
+                inputIdx += 1
+            }
+        }
+        
+        let word = String(finalWordChars).trimmingCharacters(in: .whitespaces)
+        
+        guard word.count == wordLen else { 
+            showToast("Kelimeyi tamamlayın")
+            return 
+        }
+
+        let valid = await engine.isValidWord(word, config: session.config)
+        guard valid else {
+            showToast("Bu kelime listede yok")
+            triggerShake(row: session.currentGuessIndex)
+            if settings.hapticEnabled { haptic.invalidWord() }
+            return
+        }
+
+        let guess = engine.evaluateGuess(word, in: session)
+        session.guesses.append(guess)
+        currentInput = ""
+
+        let row = session.guesses.count - 1
+        triggerReveal(row: row)
+        keyStates = engine.aggregateKeyStates(from: session.guesses)
+
+        if settings.hapticEnabled { haptic.submitGuess() }
+
+        // Win / lose check
+        if guess.isCorrect {
+            session.phase = .won
+            session.endTime = Date()
+            if settings.hapticEnabled { haptic.win() }
+            finishGame()
+        } else if session.guesses.count >= session.config.maxGuesses {
+            session.phase = .lost
+            session.endTime = Date()
+            if settings.hapticEnabled { haptic.lose() }
+            showToast(session.targetWord.uppercased())
+            finishGame()
+        }
+
+        // Send progress to opponent in duel mode
+        if session.mode == .duel {
+            sendProgress()
+            if guess.isCorrect || session.guesses.count >= session.config.maxGuesses {
+                sendGameCompleted()
+            }
+        }
+    }
+
+    // MARK: - Tile accessors
+
+    func tileLetter(row: Int, col: Int) -> String {
+        if row < session.guesses.count {
+            let chars = Array(session.guesses[row].word)
+            return col < chars.count ? String(chars[col]) : ""
+        } else if row == session.guesses.count {
+            if let hint = session.revealedHints[col] {
+                return hint
+            }
+            let chars = Array(currentInput)
+            return col < chars.count ? String(chars[col]) : ""
+        }
+        return ""
+    }
+
+    func tileState(row: Int, col: Int) -> TileState {
+        if row < session.guesses.count {
+            let eval = session.guesses[row].evaluation
+            return col < eval.count ? eval[col] : .absent
+        } else if row == session.guesses.count {
+            if session.revealedHints[col] != nil {
+                return .correct
+            }
+            let chars = Array(currentInput)
+            return col < chars.count ? .filled : .empty
+        }
+        return .empty
+    }
+
+    // MARK: - Rematch
+
+    func requestRematch() {
+        guard session.mode == .duel else { return }
+        try? multipeerService?.send(
+            PeerMessage(type: .rematchRequest, payload: Data())
+        )
+    }
+
+    func acceptRematch() {
+        try? multipeerService?.send(
+            PeerMessage(type: .rematchAccepted, payload: Data())
+        )
+    }
+
+    // MARK: - Private helpers
+
+    private func finishGame() {
+        let localPlayer = Player(name: settings.playerName)
+        let result = engine.computeResult(session: session,
+                                          localPlayer: localPlayer,
+                                          opponentPerformance: opponentPerformance)
+        gameResult = result
+        stats.record(result: result)
+
+        // Show result after reveal animation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            self?.showResult = true
+        }
+    }
+
+    private func sendProgress() {
+        guard let multipeerService else { return }
+        let payload = ProgressPayload(guessCount: session.guesses.count)
+        try? multipeerService.send(try PeerMessage.make(payload, type: .opponentProgress))
+    }
+
+    private func sendGameCompleted() {
+        guard let multipeerService else { return }
+        let lastGuess = session.guesses.last
+        let solved = lastGuess?.isCorrect ?? false
+        let perf = PlayerPerformance(
+            playerID: settings.playerName,
+            playerName: settings.playerName,
+            guessCount: session.guesses.count,
+            solved: solved,
+            duration: session.duration
+        )
+        let payload = GameCompletedPayload(performance: perf)
+        try? multipeerService.send(try PeerMessage.make(payload, type: .gameCompleted))
+    }
+
+    private func subscribeToMessages() {
+        multipeerService?.messageHandler = { [weak self] message in
+            self?.handlePeerMessage(message)
+        }
+    }
+
+    private func handlePeerMessage(_ message: PeerMessage) {
+        switch message.type {
+        case .opponentProgress:
+            if let payload = try? message.decode(ProgressPayload.self) {
+                session.opponentGuessCount = payload.guessCount
+            }
+        case .gameCompleted:
+            if let payload = try? message.decode(GameCompletedPayload.self) {
+                opponentPerformance = payload.performance
+                isOpponentDone = true
+                // If both done, finalize
+                if session.isFinished {
+                    session.phase = .finished
+                    finishGame()
+                }
+            }
+        case .rematchRequest:
+            // Handled at lobby/result level
+            break
+        default:
+            break
+        }
+    }
+
+    private func triggerShake(row: Int) {
+        shakingRow = row
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            if self?.shakingRow == row { self?.shakingRow = nil }
+        }
+    }
+
+    private func triggerReveal(row: Int) {
+        revealingRow = row
+        DispatchQueue.main.asyncAfter(deadline: .now() + Double(session.config.wordLength) * AppConstants.flipAnimationDelay + AppConstants.guessAnimationDuration) { [weak self] in
+            if self?.revealingRow == row { self?.revealingRow = nil }
+        }
+    }
+
+    func showToast(_ msg: String) {
+        toastMessage = msg
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            if self?.toastMessage == msg { self?.toastMessage = nil }
+        }
+    }
+}
