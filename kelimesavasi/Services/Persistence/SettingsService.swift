@@ -1,16 +1,15 @@
 import Foundation
-import Observation
+import Combine
 
-@Observable
-final class SettingsService {
-    var playerName: String {
-        didSet { defaults.set(playerName, forKey: AppConstants.settingsPlayerNameKey) }
+final class SettingsService: ObservableObject {
+    @Published var playerName: String {
+        didSet { UserDefaults.standard.set(playerName, forKey: AppConstants.settingsPlayerNameKey) }
     }
-    var soundEnabled: Bool {
-        didSet { defaults.set(soundEnabled, forKey: AppConstants.settingsSoundKey) }
+    @Published var soundEnabled: Bool {
+        didSet { UserDefaults.standard.set(soundEnabled, forKey: AppConstants.settingsSoundKey) }
     }
-    var hapticEnabled: Bool {
-        didSet { defaults.set(hapticEnabled, forKey: AppConstants.settingsHapticKey) }
+    @Published var hapticEnabled: Bool {
+        didSet { UserDefaults.standard.set(hapticEnabled, forKey: AppConstants.settingsHapticKey) }
     }
 
     private let defaults = UserDefaults.standard

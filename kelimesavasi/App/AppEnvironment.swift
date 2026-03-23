@@ -1,14 +1,13 @@
 import Foundation
-import Observation
+import Combine
 
-@Observable
-final class AppEnvironment {
-    let wordRepository: WordRepository
-    let gameEngine: WordleGameEngine
-    let settingsService: SettingsService
-    let statsService: StatsService
-    let multipeerService: MultipeerSessionManager
-    let discoveryService: NearbyDiscoveryService
+final class AppEnvironment: ObservableObject {
+    @Published var wordRepository: WordRepository
+    @Published var gameEngine: WordleGameEngine
+    @Published var settingsService: SettingsService
+    @Published var statsService: StatsService
+    @Published var multipeerService: MultipeerSessionManager
+    @Published var discoveryService: NearbyDiscoveryService
 
     init() {
         let settings = SettingsService()

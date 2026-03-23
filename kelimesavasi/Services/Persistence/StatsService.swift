@@ -1,9 +1,8 @@
 import Foundation
-import Observation
+import Combine
 
-@Observable
-final class StatsService {
-    private(set) var stats: LocalStats
+final class StatsService: ObservableObject {
+    @Published private(set) var stats: LocalStats
     private let storage: StatsStorage
 
     init(storage: StatsStorage = StatsStorage()) {

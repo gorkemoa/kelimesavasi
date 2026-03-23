@@ -1,17 +1,16 @@
 import Foundation
 import MultipeerConnectivity
-import Observation
+import Combine
 
 // MARK: - NearbyDiscoveryService
-@Observable
-final class NearbyDiscoveryService: NSObject {
+final class NearbyDiscoveryService: NSObject, ObservableObject {
 
-    var discoveredPeers: [MCPeerID] = []
-    var pendingInviteFrom: MCPeerID?
-    var lastError: String?
+    @Published var discoveredPeers: [MCPeerID] = []
+    @Published var pendingInviteFrom: MCPeerID?
+    @Published var lastError: String?
 
-    private var advertiser: MCNearbyServiceAdvertiser?
-    private var browser: MCNearbyServiceBrowser?
+    @Published private var advertiser: MCNearbyServiceAdvertiser?
+    @Published private var browser: MCNearbyServiceBrowser?
 
     // Set by NearbyLobbyViewModel to handle incoming invitations
     var invitationResponseHandler: ((Bool, MCSession?) -> Void)?

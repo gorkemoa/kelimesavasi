@@ -1,28 +1,28 @@
 import Foundation
-import Observation
+import Combine
 
 // MARK: - GameViewModel
-@Observable
-final class GameViewModel {
+final class GameViewModel: ObservableObject {
 
     // MARK: Game state
-    private(set) var session: GameSession
-    var currentInput: String = ""
-    var keyStates: [String: TileState] = [:]
+    @Published private(set) var session: GameSession
+    @Published var currentInput: String = ""
+    @Published var keyStates: [String: TileState] = [:]
     var phase: GamePhase { session.phase }
 
     // MARK: UI feedback
-    var shakingRow: Int?
-    var revealingRow: Int?
-    var toastMessage: String?
-    var gameResult: GameResult?
-    var showResult: Bool = false
+    @Published var shakingRow: Int?
+    @Published var revealingRow: Int?
+    @Published var toastMessage: String?
+    @Published var gameResult: GameResult?
+    @Published var showResult: Bool = false
 
     // MARK: Duel state
     var isHost: Bool
-    var opponentPerformance: PlayerPerformance?
+    @Published var opponentPerformance: PlayerPerformance?
     var opponentGuessCount: Int { session.opponentGuessCount }
-    var isOpponentDone: Bool = false
+    @Published var isOpponentDone: Bool = false
+    private var hasFinishedGame = false
 
     // MARK: Dependencies
     private let engine: WordleGameEngine
@@ -112,25 +112,26 @@ final class GameViewModel {
         }
     }
 
+    @MainActor
     func submitGuess() async {
         guard session.phase == .playing else { return }
         
         // Build the word using revealed hints + current input
         let wordLen = session.config.wordLength
-        var finalWordChars = Array(repeating: " ", count: wordLen)
+        var finalWordChars = Array(repeating: "", count: wordLen)
         let inputChars = Array(currentInput)
         var inputIdx = 0
         
         for i in 0..<wordLen {
             if let hint = session.revealedHints[i] {
-                finalWordChars[i] = hint.lowercased().first ?? " "
+                finalWordChars[i] = hint.lowercased()
             } else if inputIdx < inputChars.count {
-                finalWordChars[i] = inputChars[inputIdx]
+                finalWordChars[i] = String(inputChars[inputIdx]).lowercased()
                 inputIdx += 1
             }
         }
         
-        let word = String(finalWordChars).trimmingCharacters(in: .whitespaces)
+        let word = finalWordChars.joined()
         
         guard word.count == wordLen else { 
             showToast("Kelimeyi tamamlayın")
@@ -188,8 +189,10 @@ final class GameViewModel {
             if let hint = session.revealedHints[col] {
                 return hint
             }
+            // Map currentInput chars to non-hint columns (skip hint slots)
+            let inputIndex = (0..<col).filter { session.revealedHints[$0] == nil }.count
             let chars = Array(currentInput)
-            return col < chars.count ? String(chars[col]) : ""
+            return inputIndex < chars.count ? String(chars[inputIndex]) : ""
         }
         return ""
     }
@@ -202,8 +205,9 @@ final class GameViewModel {
             if session.revealedHints[col] != nil {
                 return .correct
             }
+            let inputIndex = (0..<col).filter { session.revealedHints[$0] == nil }.count
             let chars = Array(currentInput)
-            return col < chars.count ? .filled : .empty
+            return inputIndex < chars.count ? .filled : .empty
         }
         return .empty
     }
@@ -226,6 +230,8 @@ final class GameViewModel {
     // MARK: - Private helpers
 
     private func finishGame() {
+        guard !hasFinishedGame else { return }
+        hasFinishedGame = true
         let localPlayer = Player(name: settings.playerName)
         let result = engine.computeResult(session: session,
                                           localPlayer: localPlayer,
@@ -276,8 +282,27 @@ final class GameViewModel {
             if let payload = try? message.decode(GameCompletedPayload.self) {
                 opponentPerformance = payload.performance
                 isOpponentDone = true
-                // If both done, finalize
                 if session.isFinished {
+                    if hasFinishedGame {
+                        // Already showed result locally — refresh it with opponent data
+                        let localPlayer = Player(name: settings.playerName)
+                        gameResult = engine.computeResult(
+                            session: session,
+                            localPlayer: localPlayer,
+                            opponentPerformance: opponentPerformance
+                        )
+                        // Ensure sheet is still visible
+                        if !showResult {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                                self?.showResult = true
+                            }
+                        }
+                    } else {
+                        session.phase = .finished
+                        finishGame()
+                    }
+                } else {
+                    // Opponent finished, but I haven't. I MUST show result screen now because the game is over.
                     session.phase = .finished
                     finishGame()
                 }
@@ -309,5 +334,10 @@ final class GameViewModel {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
             if self?.toastMessage == msg { self?.toastMessage = nil }
         }
+    }
+
+    /// For unit tests: directly inject a revealed hint at a column index.
+    func _testing_setHint(_ letter: String, at col: Int) {
+        session.revealedHints[col] = letter
     }
 }

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @Environment(AppEnvironment.self) private var env
+    @EnvironmentObject var env: AppEnvironment
     @State private var showResetConfirm = false
 
     var body: some View {
@@ -114,6 +114,6 @@ struct SettingsView: View {
 #Preview {
     NavigationStack {
         SettingsView()
-            .environment(AppEnvironment())
+            .environmentObject(AppEnvironment())
     }
 }

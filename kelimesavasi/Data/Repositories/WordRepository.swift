@@ -26,6 +26,7 @@ final class WordRepository: WordRepositoryProtocol {
     }
 
     func isValid(word: String, length: Int = AppConstants.defaultWordLength) async -> Bool {
+        if database == nil { try? await loadIfNeeded() }
         guard let db = database else { return false }
         return db.isValid(word, length: length)
     }

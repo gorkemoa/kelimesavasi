@@ -7,9 +7,9 @@ struct GameView: View {
     var config: GameConfig = .default
     var isHost: Bool = false
 
-    @Environment(AppEnvironment.self) private var env
+    @EnvironmentObject var env: AppEnvironment
+    @Environment(\.dismiss) private var dismiss
     @State private var viewModel: GameViewModel?
-    @State private var isLoading = true
     @State private var loadError: String?
 
     var body: some View {
@@ -17,7 +17,7 @@ struct GameView: View {
             AppTheme.Colors.background.ignoresSafeArea()
 
             if let vm = viewModel {
-                gameContent(vm: vm)
+                GameContentView(viewModel: vm, mode: mode)
             } else if let error = loadError {
                 errorView(error)
             } else {
@@ -26,141 +26,9 @@ struct GameView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(mode == .duel)
         .toolbar { toolbarContent }
         .task { await setupViewModel() }
-    }
-
-    // MARK: - Main game content
-    @ViewBuilder
-    private func gameContent(vm: GameViewModel) -> some View {
-        VStack(spacing: 0) {
-            // Stats bar
-            statsBar(vm: vm)
-                .padding(.horizontal, 16)
-                .padding(.top, 4)
-
-            // Opponent progress bar (duel only)
-            if mode == .duel {
-                let peers = env.multipeerService.connectedPeers
-                let opponentName = peers.first?.displayName ?? "Rakip"
-                OpponentProgressView(
-                    opponentGuessCount: vm.opponentGuessCount,
-                    maxGuesses: vm.session.config.maxGuesses,
-                    isDone: vm.isOpponentDone,
-                    opponentName: opponentName
-                )
-                .padding(.horizontal, 16)
-                .padding(.top, 4)
-            }
-
-            // Toast message
-            toastLayer(vm: vm)
-                .frame(height: 36)
-                .padding(.top, 4)
-
-            // Game board
-            GameBoardView(viewModel: vm)
-                .padding(.top, 8)
-
-            Spacer()
-
-            // Keyboard
-            if !vm.session.isFinished {
-                KeyboardView(
-                    keyStates: vm.keyStates,
-                    onLetter: { vm.addLetter($0) },
-                    onDelete: { vm.deleteLetter() },
-                    onSubmit: {
-                        Task { await vm.submitGuess() }
-                    }
-                )
-                .padding(.bottom, 8)
-            }
-        }
-        .sheet(isPresented: Binding(
-            get: { vm.showResult },
-            set: { vm.showResult = $0 }
-        )) {
-            if let result = vm.gameResult {
-                ResultView(result: result,
-                           canRematch: mode == .duel,
-                           onRematch: { vm.requestRematch() })
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func statsBar(vm: GameViewModel) -> some View {
-        HStack {
-            // Coin Display
-            HStack(spacing: 4) {
-                Image(systemName: "circle.circle.fill")
-                    .foregroundColor(.yellow)
-                Text("\(env.statsService.stats.coins)")
-                    .font(AppTheme.Font.headline())
-                    .foregroundStyle(AppTheme.Colors.text)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(AppTheme.Colors.surface)
-            .cornerRadius(12)
-
-            Spacer()
-
-            // Joker / Hint Button
-            let isSolo = mode == .solo
-            let cost = isSolo ? 10 : 50
-            Button(action: { vm.revealHint() }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "lightbulb.fill")
-                    Text("İpucu (\(cost))")
-                }
-                .font(AppTheme.Font.caption())
-                .foregroundStyle(.white)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(env.statsService.stats.coins >= cost ? AppTheme.Colors.primary : Color.gray)
-                .cornerRadius(10)
-            }
-            .disabled(env.statsService.stats.coins < cost)
-            .opacity(vm.session.isFinished ? 0 : 1)
-
-            // Report Word Button
-            Button(action: { reportWord(vm: vm) }) {
-                Image(systemName: "exclamationmark.bubble")
-                    .foregroundStyle(AppTheme.Colors.textSecondary)
-                    .padding(8)
-            }
-        }
-    }
-
-    private func reportWord(vm: GameViewModel) {
-        let word = vm.session.targetWord.uppercased()
-        let body = "Bu kelime oyun listesinde olmalı: \(word)"
-        let encodedBody = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let mailUrl = URL(string: "mailto:gorkemoa35@gmail.com?subject=Kelime%20Savasi%20Kelime%20Bildirimi&body=\(encodedBody)")!
-        
-        if UIApplication.shared.canOpenURL(mailUrl) {
-            UIApplication.shared.open(mailUrl)
-        } else {
-            vm.showToast("Mail uygulaması bulunamadı.")
-        }
-    }
-
-    @ViewBuilder
-    private func toastLayer(vm: GameViewModel) -> some View {
-        if let msg = vm.toastMessage {
-            Text(msg)
-                .font(AppTheme.Font.caption(13))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(Color(hex: "222435").opacity(0.95))
-                .cornerRadius(AppTheme.Radius.pill)
-                .transition(.move(edge: .top).combined(with: .opacity))
-        } else {
-            Color.clear
-        }
     }
 
     @ViewBuilder
@@ -184,6 +52,17 @@ struct GameView: View {
                 .font(AppTheme.Font.headline())
                 .foregroundStyle(AppTheme.Colors.text)
         }
+        if mode == .duel {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button {
+                    env.multipeerService.disconnect()
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .foregroundStyle(AppTheme.Colors.textSecondary)
+                }
+            }
+        }
     }
 
     // MARK: - Setup
@@ -193,14 +72,13 @@ struct GameView: View {
             let session: GameSession
 
             if let word = targetWord, !word.isEmpty {
-                // Guest in duel: target word received from host
+                // Both host and guest: lobby VM picks the word and passes it here
                 session = env.gameEngine.newDuelSession(targetWord: word, config: config)
             } else if mode == .duel {
-                // Host in duel: pick random word, then tell guest
+                // Fallback: should not normally be reached; pick word locally
                 let randomWord = try await env.wordRepository.randomTargetWord(length: config.wordLength)
                 session = env.gameEngine.newDuelSession(targetWord: randomWord, config: config)
             } else {
-                // Solo practice
                 session = try await env.gameEngine.newSoloSession(config: config)
             }
 
@@ -213,16 +91,6 @@ struct GameView: View {
                     isHost: isHost,
                     multipeerService: env.multipeerService
                 )
-                // If host, send game start to guest
-                if isHost {
-                    let payload = GameStartedPayload(
-                        config: session.config,
-                        targetWord: session.targetWord,
-                        hostID: env.settingsService.playerName,
-                        hostName: env.settingsService.playerName
-                    )
-                    try? env.multipeerService.send(try PeerMessage.make(payload, type: .gameStarted))
-                }
             } else {
                 viewModel = GameViewModel(
                     session: session,
@@ -237,9 +105,138 @@ struct GameView: View {
     }
 }
 
+// MARK: - GameContentView
+// Separate struct with @ObservedObject so every @Published change on GameViewModel
+// triggers a re-render (keyboard display, board tiles, toast, etc.)
+private struct GameContentView: View {
+    @ObservedObject var viewModel: GameViewModel
+    let mode: GameMode
+    @EnvironmentObject var env: AppEnvironment
+
+    var body: some View {
+        VStack(spacing: 0) {
+            statsBar
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
+
+            if mode == .duel {
+                let opponentName = env.multipeerService.connectedPeers.first?.displayName ?? "Rakip"
+                OpponentProgressView(
+                    opponentGuessCount: viewModel.opponentGuessCount,
+                    maxGuesses: viewModel.session.config.maxGuesses,
+                    isDone: viewModel.isOpponentDone,
+                    opponentName: opponentName
+                )
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
+            }
+
+            toastLayer
+                .frame(height: 36)
+                .padding(.top, 4)
+
+            GameBoardView(viewModel: viewModel)
+                .padding(.top, 8)
+
+            Spacer()
+
+            if !viewModel.session.isFinished {
+                KeyboardView(
+                    keyStates: viewModel.keyStates,
+                    onLetter: { viewModel.addLetter($0) },
+                    onDelete: { viewModel.deleteLetter() },
+                    onSubmit: { Task { await viewModel.submitGuess() } }
+                )
+                .padding(.bottom, 8)
+            }
+        }
+        .sheet(isPresented: Binding(
+            get: { viewModel.showResult },
+            set: { viewModel.showResult = $0 }
+        )) {
+            if let result = viewModel.gameResult {
+                ResultView(result: result,
+                           canRematch: mode == .duel,
+                           onRematch: { viewModel.requestRematch() })
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var statsBar: some View {
+        HStack {
+            HStack(spacing: 4) {
+                Image(systemName: "circle.circle.fill")
+                    .foregroundColor(.yellow)
+                Text("\(env.statsService.stats.coins)")
+                    .font(AppTheme.Font.headline())
+                    .foregroundStyle(AppTheme.Colors.text)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(AppTheme.Colors.surface)
+            .cornerRadius(12)
+
+            Spacer()
+
+            let isSolo = mode == .solo
+            let cost = isSolo ? 10 : 50
+            Button(action: { viewModel.revealHint() }) {
+                HStack(spacing: 4) {
+                    Image(systemName: "lightbulb.fill")
+                    Text("İpucu (\(cost))")
+                }
+                .font(AppTheme.Font.caption())
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(env.statsService.stats.coins >= cost ? AppTheme.Colors.primary : Color.gray)
+                .cornerRadius(10)
+            }
+            .disabled(env.statsService.stats.coins < cost)
+            .opacity(viewModel.session.isFinished ? 0 : 1)
+
+            Button(action: reportWord) {
+                Image(systemName: "exclamationmark.bubble")
+                    .foregroundStyle(AppTheme.Colors.textSecondary)
+                    .padding(8)
+            }
+        }
+    }
+
+    private func reportWord() {
+        let word = viewModel.session.targetWord.uppercased()
+        let body = "Bu kelime oyun listesinde olmalı: \(word)"
+        let encodedBody = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let mailUrl = URL(string: "mailto:gorkemoa35@gmail.com?subject=Kelime%20Savasi%20Kelime%20Bildirimi&body=\(encodedBody)")!
+        if UIApplication.shared.canOpenURL(mailUrl) {
+            UIApplication.shared.open(mailUrl)
+        } else {
+            viewModel.showToast("Mail uygulaması bulunamadı.")
+        }
+    }
+
+    @ViewBuilder
+    private var toastLayer: some View {
+        if let msg = viewModel.toastMessage {
+            Text(msg)
+                .font(AppTheme.Font.caption(13))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color(hex: "222435").opacity(0.95))
+                .cornerRadius(AppTheme.Radius.pill)
+                .transition(.move(edge: .top).combined(with: .opacity))
+        } else {
+            Color.clear
+        }
+    }
+}
+
 #Preview {
     NavigationStack {
         GameView(mode: .solo)
-            .environment(AppEnvironment())
+            .environmentObject(AppEnvironment())
     }
 }
+

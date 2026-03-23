@@ -2,7 +2,7 @@ import SwiftUI
 
 struct HomeView: View {
     let onNavigate: (AppRoute) -> Void
-    @Environment(AppEnvironment.self) private var env
+    @EnvironmentObject var env: AppEnvironment
 
     var body: some View {
         ZStack {
@@ -157,6 +157,6 @@ struct HomeView: View {
 #Preview {
     NavigationStack {
         HomeView { _ in }
-            .environment(AppEnvironment())
+            .environmentObject(AppEnvironment())
     }
 }

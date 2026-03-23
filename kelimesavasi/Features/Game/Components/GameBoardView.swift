@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct GameBoardView: View {
-    let viewModel: GameViewModel
+    @ObservedObject var viewModel: GameViewModel
 
     private var wordLength: Int { viewModel.session.config.wordLength }
     private var maxGuesses: Int { viewModel.session.config.maxGuesses }
@@ -54,7 +54,7 @@ struct ShakeModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .offset(x: offset)
-            .onChange(of: shaking) { _, isShaking in
+            .onChange(of: shaking) { isShaking in
                 guard isShaking else { return }
                 withAnimation(.default.repeatCount(5, autoreverses: true).speed(4)) {
                     offset = 8

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct StatsView: View {
-    @Environment(AppEnvironment.self) private var env
+    @EnvironmentObject var env: AppEnvironment
     @Environment(\.dismiss) private var dismiss
 
     private var stats: LocalStats { env.statsService.stats }
@@ -166,6 +166,6 @@ struct StatsView: View {
 #Preview {
     NavigationStack {
         StatsView()
-            .environment(AppEnvironment())
+            .environmentObject(AppEnvironment())
     }
 }

@@ -8,7 +8,7 @@ struct ResultView: View {
 
     private var headline: String {
         if result.mode == .solo {
-            return result.iWon ? "Tebrikler! 🎉" : "Bilemedin 😔"
+            return result.myPerformance.solved ? "Tebrikler! 🎉" : "Bilemedin 😔"
         }
         if result.isDraw { return "Beraberlik 🤝" }
         return result.iWon ? "Kazandın! 🏆" : "Kaybettin 😔"
@@ -16,6 +16,9 @@ struct ResultView: View {
 
     private var headlineColor: Color {
         if result.isDraw { return AppTheme.Colors.warning }
+        if result.mode == .solo {
+            return result.myPerformance.solved ? AppTheme.Colors.correct : AppTheme.Colors.error
+        }
         return result.iWon ? AppTheme.Colors.correct : AppTheme.Colors.error
     }
 

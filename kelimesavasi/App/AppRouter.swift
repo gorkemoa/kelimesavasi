@@ -12,7 +12,7 @@ enum AppRoute: Hashable {
 
 // MARK: - App Router
 struct AppRouter: View {
-    @Environment(AppEnvironment.self) private var env
+    @EnvironmentObject var env: AppEnvironment
     @State private var path = NavigationPath()
 
     var body: some View {

@@ -51,7 +51,7 @@ struct TileView: View {
             .degrees(flipped || showResultColor ? 0 : (isRevealing ? -90 : 0)),
             axis: (x: 1, y: 0, z: 0)
         )
-        .onChange(of: isRevealing) { _, newValue in
+        .onChange(of: isRevealing) { newValue in
             if newValue {
                 DispatchQueue.main.asyncAfter(deadline: .now() + revealDelay) {
                     withAnimation(.easeInOut(duration: AppConstants.guessAnimationDuration)) {
@@ -60,8 +60,8 @@ struct TileView: View {
                 }
             }
         }
-        .onChange(of: state) { old, new in
-            if old == .empty && (new == .correct || new == .present || new == .absent) {
+        .onChange(of: state) { new in
+            if new == .correct || new == .present || new == .absent {
                 // If state changes directly (e.g. initial load), ensure it's flipped
                 flipped = true
             }

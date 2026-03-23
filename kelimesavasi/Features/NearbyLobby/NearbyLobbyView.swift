@@ -1,84 +1,84 @@
 import SwiftUI
 import MultipeerConnectivity
 
+// MARK: - NearbyLobbyView (thin wrapper — passes services to the inner view that owns the VM)
 struct NearbyLobbyView: View {
     var onGameReady: (String?, GameConfig, Bool) -> Void
-    @Environment(AppEnvironment.self) private var env
-    @State private var viewModel: NearbyLobbyViewModel?
+    @EnvironmentObject var env: AppEnvironment
+
+    var body: some View {
+        NearbyLobbyContentView(
+            sessionManager: env.multipeerService,
+            discoveryService: env.discoveryService,
+            settings: env.settingsService,
+            wordRepository: env.wordRepository,
+            onGameReady: onGameReady
+        )
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text("Yakın Düello")
+                    .font(AppTheme.Font.headline())
+                    .foregroundStyle(AppTheme.Colors.text)
+            }
+        }
+    }
+}
+
+// MARK: - NearbyLobbyContentView (@StateObject owns the VM so @Published changes re-render the UI)
+private struct NearbyLobbyContentView: View {
+    @StateObject private var vm: NearbyLobbyViewModel
+    let onGameReady: (String?, GameConfig, Bool) -> Void
     @Environment(\.dismiss) private var dismiss
+
+    init(sessionManager: MultipeerSessionManager,
+         discoveryService: NearbyDiscoveryService,
+         settings: SettingsService,
+         wordRepository: WordRepositoryProtocol,
+         onGameReady: @escaping (String?, GameConfig, Bool) -> Void) {
+        self.onGameReady = onGameReady
+        let vm = NearbyLobbyViewModel(
+            sessionManager: sessionManager,
+            discoveryService: discoveryService,
+            settings: settings,
+            wordRepository: wordRepository
+        )
+        vm.onGameReady = onGameReady
+        _vm = StateObject(wrappedValue: vm)
+    }
 
     var body: some View {
         ZStack {
             AppTheme.Colors.background.ignoresSafeArea()
-
-            if let vm = viewModel {
-                lobbyContent(vm: vm)
-            } else {
-                ProgressView().tint(AppTheme.Colors.primary)
-            }
+            lobbyContent
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar { toolbarContent }
-        .onAppear { setupViewModel() }
-        .onDisappear { viewModel?.cancelIfNeeded() }
-    }
-
-    // MARK: - Setup
-
-    private func setupViewModel() {
-        let vm = NearbyLobbyViewModel(
-            sessionManager: env.multipeerService,
-            discoveryService: env.discoveryService,
-            settings: env.settingsService
-        )
-        vm.onGameReady = { word, config, isHost in
-            onGameReady(word, config, isHost)
-        }
-        viewModel = vm
+        .onDisappear { vm.cancelIfNeeded() }
     }
 
     // MARK: - Content
 
-    private func handleConnectionChange(_ state: ConnectionState, vm: NearbyLobbyViewModel) {
-        if state == .connected {
-            let hasDiscoveredPeers = !env.discoveryService.discoveredPeers.isEmpty
-            let isInviting = vm.phase == .hosting || vm.phase == .connecting
-            let isHost = hasDiscoveredPeers ? false : isInviting
-            vm.handleConnected(isHost: isHost)
-        }
-    }
-
     @ViewBuilder
-    private func lobbyContent(vm: NearbyLobbyViewModel) -> some View {
+    private var lobbyContent: some View {
         VStack(spacing: AppTheme.Spacing.lg) {
             switch vm.phase {
             case .choosingRole:
-                roleChooser(vm: vm)
+                roleChooser
             case .hosting:
-                hostingView(vm: vm)
+                hostingView
             case .joining:
-                joiningView(vm: vm)
+                joiningView
             case .connecting, .waitingForStart:
-                connectingView(vm: vm)
+                connectingView
             case .error(let msg):
-                errorView(msg, vm: vm)
+                errorView(msg)
             }
         }
         .padding(.horizontal, AppTheme.Spacing.lg)
         .padding(.top, AppTheme.Spacing.lg)
-        .onChange(of: env.multipeerService.connectionState) { oldState, newState in
-            handleConnectionChange(newState, vm: vm)
-        }
-        .onChange(of: env.discoveryService.discoveredPeers) { oldPeers, newPeers in
-            vm.discoveredPeers = newPeers
-        }
-        .onChange(of: env.discoveryService.pendingInviteFrom) { oldInvite, newInvite in
-            vm.pendingInviteFrom = newInvite
-        }
     }
 
     // MARK: - Role chooser
-    private func roleChooser(vm: NearbyLobbyViewModel) -> some View {
+    private var roleChooser: some View {
         VStack(spacing: AppTheme.Spacing.lg) {
             VStack(spacing: AppTheme.Spacing.xs) {
                 Image(systemName: "antenna.radiowaves.left.and.right")
@@ -110,13 +110,12 @@ struct NearbyLobbyView: View {
     }
 
     // MARK: - Hosting view
-    private func hostingView(vm: NearbyLobbyViewModel) -> some View {
+    private var hostingView: some View {
         VStack(spacing: AppTheme.Spacing.lg) {
             statusHeader(icon: "wifi", title: "Oyun kuruldu", subtitle: "Yakındaki oyuncuları bekliyorsunuz…")
 
-            // Pending invitation
             if let peer = vm.pendingInviteFrom {
-                invitationCard(peer: peer, vm: vm)
+                invitationCard(peer: peer)
             }
 
             Spacer()
@@ -125,7 +124,7 @@ struct NearbyLobbyView: View {
     }
 
     // MARK: - Joining view
-    private func joiningView(vm: NearbyLobbyViewModel) -> some View {
+    private var joiningView: some View {
         VStack(spacing: AppTheme.Spacing.lg) {
             statusHeader(icon: "magnifyingglass", title: "Oyunlar aranıyor…", subtitle: "Çevredeki oyun odaları listeleniyor")
 
@@ -156,7 +155,7 @@ struct NearbyLobbyView: View {
     }
 
     // MARK: - Connecting view
-    private func connectingView(vm: NearbyLobbyViewModel) -> some View {
+    private var connectingView: some View {
         VStack(spacing: AppTheme.Spacing.lg) {
             Spacer()
             ProgressView()
@@ -170,13 +169,17 @@ struct NearbyLobbyView: View {
     }
 
     // MARK: - Error view
-    private func errorView(_ msg: String, vm: NearbyLobbyViewModel) -> some View {
+    private func errorView(_ msg: String) -> some View {
         VStack(spacing: AppTheme.Spacing.lg) {
             Spacer()
             Image(systemName: "xmark.circle").font(.system(size: 48)).foregroundStyle(AppTheme.Colors.error)
             Text(msg).font(AppTheme.Font.body()).foregroundStyle(AppTheme.Colors.textSecondary).multilineTextAlignment(.center)
             lobbyActionButton(title: "Tekrar Dene", icon: "arrow.clockwise", isPrimary: true) {
                 vm.phase = .choosingRole
+            }
+            lobbyActionButton(title: "Ana Menü", icon: "house", isPrimary: false) {
+                vm.cancel()
+                dismiss()
             }
             Spacer()
         }
@@ -200,7 +203,7 @@ struct NearbyLobbyView: View {
         .padding(.top, AppTheme.Spacing.xl)
     }
 
-    private func invitationCard(peer: MCPeerID, vm: NearbyLobbyViewModel) -> some View {
+    private func invitationCard(peer: MCPeerID) -> some View {
         VStack(spacing: AppTheme.Spacing.sm) {
             Text("\(peer.displayName) katılmak istiyor")
                 .font(AppTheme.Font.headline())
@@ -268,20 +271,11 @@ struct NearbyLobbyView: View {
             .foregroundStyle(AppTheme.Colors.textSecondary)
             .padding(.bottom, AppTheme.Spacing.lg)
     }
-
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .principal) {
-            Text("Yakın Düello")
-                .font(AppTheme.Font.headline())
-                .foregroundStyle(AppTheme.Colors.text)
-        }
-    }
 }
 
 #Preview {
     NavigationStack {
         NearbyLobbyView { _, _, _ in }
-            .environment(AppEnvironment())
+            .environmentObject(AppEnvironment())
     }
 }

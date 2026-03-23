@@ -1,6 +1,6 @@
 import Foundation
 import MultipeerConnectivity
-import Observation
+import Combine
 
 // MARK: - Connection State
 enum ConnectionState: Equatable, Sendable {
@@ -10,19 +10,18 @@ enum ConnectionState: Equatable, Sendable {
 }
 
 // MARK: - MultipeerSessionManager
-@Observable
-final class MultipeerSessionManager: NSObject {
+final class MultipeerSessionManager: NSObject, ObservableObject {
 
     // Observed state
-    var connectedPeers: [MCPeerID] = []
-    var connectionState: ConnectionState = .disconnected
-    var lastError: String?
+    @Published var connectedPeers: [MCPeerID] = []
+    @Published var connectionState: ConnectionState = .disconnected
+    @Published var lastError: String?
 
     // Internal (not observed but updated on MainActor)
     var messageHandler: ((PeerMessage) -> Void)?
 
-    private(set) var session: MCSession?
-    private(set) var myPeerID: MCPeerID
+    @Published private(set) var session: MCSession?
+    @Published private(set) var myPeerID: MCPeerID
 
     init(playerName: String) {
         myPeerID = MCPeerID(displayName: playerName)
@@ -39,7 +38,7 @@ final class MultipeerSessionManager: NSObject {
     private func createSession() {
         let s = MCSession(peer: myPeerID,
                           securityIdentity: nil,
-                          encryptionPreference: .required)
+                          encryptionPreference: .optional)  // .required causes DTLS routing failures on some iOS/network configs
         s.delegate = self
         session = s
     }
