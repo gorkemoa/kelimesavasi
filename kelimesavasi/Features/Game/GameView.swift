@@ -29,6 +29,10 @@ struct GameView: View {
             env.multipeerService.disconnect()
             dismiss()
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("RestartGame"))) { _ in
+            viewModel?.showResult = false
+            dismiss()
+        }
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(mode == .duel)
         .toolbar { toolbarContent }
@@ -161,7 +165,13 @@ private struct GameContentView: View {
             if let result = viewModel.gameResult {
                 ResultView(result: result,
                            canRematch: mode == .duel,
-                           onRematch: { viewModel.requestRematch() },
+                           onRematch: { 
+                                if viewModel.toastMessage == "Rakip rövanş istiyor!" {
+                                    viewModel.acceptRematch()
+                                } else {
+                                    viewModel.requestRematch()
+                                }
+                           },
                            onMainMenu: {
                                 viewModel.showResult = false
                                 env.multipeerService.disconnect()

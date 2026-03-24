@@ -38,7 +38,7 @@ final class MultipeerSessionManager: NSObject, ObservableObject {
     private func createSession() {
         let s = MCSession(peer: myPeerID,
                           securityIdentity: nil,
-                          encryptionPreference: .optional)  // .required causes DTLS routing failures on some iOS/network configs
+                          encryptionPreference: .none) // DTLS 'No route to host' ve 'SSLWrite failed' hatalarını tamamen önlemek için şifrelemeyi kapattık
         s.delegate = self
         session = s
     }

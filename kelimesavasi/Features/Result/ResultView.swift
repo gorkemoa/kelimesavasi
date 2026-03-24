@@ -23,6 +23,9 @@ struct ResultView: View {
         return result.iWon ? AppTheme.Colors.correct : AppTheme.Colors.error
     }
 
+    @State private var hasRequestedRematch: Bool = false
+    @State private var peerRequestedRematch: Bool = false
+
     var body: some View {
         ZStack {
             AppTheme.Colors.background.ignoresSafeArea()
@@ -35,6 +38,12 @@ struct ResultView: View {
                         .font(.system(size: 32, weight: .black, design: .rounded))
                         .foregroundStyle(headlineColor)
                         .padding(.top, AppTheme.Spacing.xxl)
+
+                    if peerRequestedRematch {
+                        Text("Rakip rövanş istiyor!")
+                            .font(AppTheme.Font.caption())
+                            .foregroundStyle(AppTheme.Colors.primary)
+                    }
 
                     // Target word reveal
                     targetWordCard
@@ -64,7 +73,9 @@ struct ResultView: View {
                 .foregroundStyle(AppTheme.Colors.textSecondary)
 
             HStack(spacing: 6) {
-                ForEach(Array(result.targetWord.uppercased()), id: \.self) { ch in
+                let targetChars = Array(result.targetWord.uppercased())
+                ForEach(0..<targetChars.count, id: \.self) { index in
+                    let ch = targetChars[index]
                     Text(String(ch))
                         .font(AppTheme.Font.tile(24))
                         .foregroundStyle(.white)
@@ -112,17 +123,23 @@ struct ResultView: View {
         VStack(spacing: AppTheme.Spacing.sm) {
             if canRematch {
                 Button {
-                    onRematch?()
-                    dismiss()
+                    if peerRequestedRematch {
+                        onRematch?() // This will act as acceptance
+                    } else {
+                        onRematch?()
+                        hasRequestedRematch = true
+                    }
                 } label: {
-                    Label("Rövanş İste", systemImage: "arrow.clockwise")
+                    Label(peerRequestedRematch ? "Rövanşı Kabul Et" : (hasRequestedRematch ? "İstek Gönderildi..." : "Rövanş İste"), 
+                          systemImage: peerRequestedRematch ? "checkmark" : "arrow.clockwise")
                         .font(AppTheme.Font.headline())
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, AppTheme.Spacing.md)
-                        .background(AppTheme.Colors.primary)
+                        .background(hasRequestedRematch && !peerRequestedRematch ? Color.gray : AppTheme.Colors.primary)
                         .cornerRadius(AppTheme.Radius.lg)
                 }
+                .disabled(hasRequestedRematch && !peerRequestedRematch)
                 .buttonStyle(.plain)
             }
 
@@ -141,6 +158,9 @@ struct ResultView: View {
                     .surfaceStyle()
             }
             .buttonStyle(.plain)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("PeerRematchRequested"))) { _ in
+            peerRequestedRematch = true
         }
     }
 }

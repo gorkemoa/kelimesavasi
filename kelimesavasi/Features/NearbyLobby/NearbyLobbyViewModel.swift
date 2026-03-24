@@ -173,6 +173,8 @@ final class NearbyLobbyViewModel: ObservableObject {
             playerReadyTask?.cancel()
             playerReadyTask = nil
             gameStarted = true
+            // Match the state of host to avoid re-triggering logic
+            phase = .connecting
             onGameReady?(payload.targetWord, payload.config, false)
 
         case .playerReady:
@@ -188,14 +190,23 @@ final class NearbyLobbyViewModel: ObservableObject {
             NotificationCenter.default.post(name: NSNotification.Name("PeerRematchRequested"), object: nil)
         case .rematchAccepted:
             NotificationCenter.default.post(name: NSNotification.Name("RestartGame"), object: nil)
-            if isHost {
+            Task { @MainActor [weak self] in
+                guard let self else { return }
                 gameStarted = false
                 receivedPlayerReady = false
                 pendingTargetWord = nil
-                pickTargetWord()
-            } else {
-                gameStarted = false
-                startSendingPlayerReady()
+                
+                // Önceki bağlantıyı temizleyip el sıkışma (handshake) için taze bir başlangıç yapıyoruz
+                if isHost {
+                    phase = .connecting
+                    // Navigasyonun kapanması ve soketlerin boşalması için yeterli süre bekliyoruz
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    pickTargetWord()
+                } else {
+                    phase = .waitingForStart
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    startSendingPlayerReady()
+                }
             }
         default:
             break
@@ -233,14 +244,26 @@ final class NearbyLobbyViewModel: ObservableObject {
     private func triggerGameStart() {
         guard let word = pendingTargetWord, !gameStarted else { return }
         gameStarted = true
-        // Send gameStarted to guest — MC channels are proven open at this point
-        let payload = GameStartedPayload(
-            config: .default,
-            targetWord: word,
-            hostID: settings.playerName,
-            hostName: settings.playerName
-        )
-        try? sessionManager.send(try PeerMessage.make(payload, type: .gameStarted))
+        // Important: Update phases so UI knows we are transitioning
+        phase = .connecting 
+        
+        // Use a background task to send multiple times to ensure delivery
+        Task.detached(priority: .high) { [weak self] in
+            guard let self else { return }
+            let payload = GameStartedPayload(
+                config: .default,
+                targetWord: word,
+                hostID: settings.playerName,
+                hostName: settings.playerName
+            )
+            let msg = (try? PeerMessage.make(payload, type: .gameStarted)) ?? PeerMessage(type: .gameStarted, payload: Data())
+            
+            // Send 3 times with small delays to ensure one gets through
+            for _ in 0..<3 {
+                try? self.sessionManager.send(msg)
+                try? await Task.sleep(nanoseconds: 200_000_000)
+            }
+        }
         onGameReady?(word, .default, true)
     }
 
