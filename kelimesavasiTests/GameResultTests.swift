@@ -94,7 +94,7 @@ final class GameResultTests: XCTestCase {
         let oppPerf = PlayerPerformance(playerID: "p2", playerName: "Opp",
                                         guessCount: 5, solved: true, duration: 80)
 
-        let result = engine.computeResult(session: session, localPlayer: localPlayer, opponentPerformance: oppPerf)
+        let result = engine.computeResult(session: session, localPlayer: localPlayer, opponentPerfor mance: oppPerf)
         XCTAssertEqual(result.winnerID, "p1", "Fewer guesses should win")
     }
 

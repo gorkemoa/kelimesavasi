@@ -3,21 +3,22 @@ import SwiftUI
 enum AppTheme {
     // MARK: - Colors
     enum Colors {
-        static let background     = Color(hex: "0F1117")
-        static let surface        = Color(hex: "1A1D27")
-        static let surfaceHigh    = Color(hex: "252836")
-        static let border         = Color(hex: "3A3D4E")
+        static let background     = Color(hex: "080B12")
+        static let surface        = Color(hex: "131720")
+        static let surfaceHigh    = Color(hex: "1E2231")
+        static let border         = Color(hex: "2E3348")
         static let primary        = Color(hex: "6C8EF5")
         static let primaryDim     = Color(hex: "3D5199")
+        static let primaryBright  = Color(hex: "8AAEFF")
         static let text           = Color.white
         static let textSecondary  = Color(hex: "8A8A9A")
-        static let textDisabled   = Color(hex: "55556A")
+        static let textDisabled   = Color(hex: "45455A")
 
         // Tile states
         static let correct = Color(hex: "538D4E")
         static let present = Color(hex: "B59F3B")
-        static let absent  = Color(hex: "3A3A3C")
-        static let filled  = Color(hex: "2C2E3E")
+        static let absent  = Color(hex: "3A3A4C")
+        static let filled  = Color(hex: "1E2231")
         static let empty   = Color.clear
 
         // Status
@@ -25,18 +26,41 @@ enum AppTheme {
         static let warning = Color(hex: "FF9F0A")
         static let error   = Color(hex: "FF453A")
         static let info    = Color(hex: "64D2FF")
+        static let gold    = Color(hex: "FFD700")
 
         // Keyboard
-        static let keyDefault  = Color(hex: "2D3142")
+        static let keyDefault  = Color(hex: "252836")
         static let keyEnter    = Color(hex: "3D5199")
-        static let keyDelete   = Color(hex: "2D3142")
+        static let keyDelete   = Color(hex: "252836")
+    }
+
+    // MARK: - Gradients
+    enum Gradients {
+        static var primaryButton: LinearGradient {
+            LinearGradient(
+                colors: [Color(hex: "6C8EF5"), Color(hex: "4A6ADB")],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            )
+        }
+        static var winCelebration: LinearGradient {
+            LinearGradient(
+                colors: [Color(hex: "538D4E"), Color(hex: "2E6B2A")],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            )
+        }
+        static var backgroundTop: RadialGradient {
+            RadialGradient(
+                colors: [Color(hex: "6C8EF5").opacity(0.15), Color.clear],
+                center: .init(x: 0.5, y: 0.0), startRadius: 0, endRadius: 320
+            )
+        }
     }
 
     // MARK: - Typography
     enum Font {
         static func tile(_ size: CGFloat = 28) -> SwiftUI.Font { .system(size: size, weight: .bold) }
         static func keyLabel(_ size: CGFloat = 14) -> SwiftUI.Font { .system(size: size, weight: .semibold) }
-        static func title(_ size: CGFloat = 28) -> SwiftUI.Font { .system(size: size, weight: .bold, design: .rounded) }
+        static func title(_ size: CGFloat = 28) -> SwiftUI.Font { .system(size: size, weight: .black, design: .rounded) }
         static func headline(_ size: CGFloat = 18) -> SwiftUI.Font { .system(size: size, weight: .semibold) }
         static func body(_ size: CGFloat = 16) -> SwiftUI.Font { .system(size: size, weight: .regular) }
         static func caption(_ size: CGFloat = 12) -> SwiftUI.Font { .system(size: size, weight: .medium) }

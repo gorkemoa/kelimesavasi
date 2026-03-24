@@ -79,91 +79,216 @@ private struct NearbyLobbyContentView: View {
 
     // MARK: - Role chooser
     private var roleChooser: some View {
-        VStack(spacing: AppTheme.Spacing.lg) {
-            VStack(spacing: AppTheme.Spacing.xs) {
+        VStack(spacing: AppTheme.Spacing.xl) {
+            Spacer()
+            
+            // Animasyonlu İkon Alanı
+            ZStack {
+                Circle()
+                    .stroke(AppTheme.Colors.primary.opacity(0.2), lineWidth: 2)
+                    .frame(width: 120, height: 120)
+                    .scaleEffect(vm.phase == .choosingRole ? 1.2 : 1.0)
+                    .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: vm.phase)
+                
+                Circle()
+                    .fill(AppTheme.Colors.primary.opacity(0.1))
+                    .frame(width: 100, height: 100)
+                
                 Image(systemName: "antenna.radiowaves.left.and.right")
-                    .font(.system(size: 44))
+                    .font(.system(size: 40))
                     .foregroundStyle(AppTheme.Colors.primary)
+                    .modifier(SymbolEffectModifier(effect: .bounce))
+            }
+            .padding(.bottom, AppTheme.Spacing.md)
+
+            VStack(spacing: AppTheme.Spacing.sm) {
                 Text("Yakın Düello")
                     .font(AppTheme.Font.title())
                     .foregroundStyle(AppTheme.Colors.text)
-                Text("Aynı Wi-Fi veya Bluetooth ağında\nbir arkadaşınla oyna")
-                    .font(AppTheme.Font.body(14))
+                
+                Text("Aynı Wi-Fi veya Bluetooth ağındaki\narkadaşlarınla gerçek zamanlı yarış.")
+                    .font(AppTheme.Font.body(16))
                     .foregroundStyle(AppTheme.Colors.textSecondary)
                     .multilineTextAlignment(.center)
+                    .lineSpacing(4)
             }
-            .padding(.top, AppTheme.Spacing.xl)
 
             Spacer()
 
             VStack(spacing: AppTheme.Spacing.md) {
-                lobbyActionButton(title: "Oyun Kur", icon: "crown", isPrimary: true) {
+                LobbyMainButton(
+                    title: "Oyun Kur",
+                    subtitle: "Diğer oyuncuların katılması için bekle",
+                    icon: "crown.fill",
+                    color: AppTheme.Colors.primary
+                ) {
                     vm.startHosting()
                 }
-                lobbyActionButton(title: "Oyuna Katıl", icon: "arrow.right.circle", isPrimary: false) {
+                
+                LobbyMainButton(
+                    title: "Oyuna Katıl",
+                    subtitle: "Kurulmuş bir oyunu ara ve katıl",
+                    icon: "person.2.fill",
+                    color: AppTheme.Colors.surfaceHigh
+                ) {
                     vm.startJoining()
                 }
             }
-
-            Spacer()
+            .padding(.bottom, AppTheme.Spacing.xl)
         }
     }
 
     // MARK: - Hosting view
     private var hostingView: some View {
-        VStack(spacing: AppTheme.Spacing.lg) {
-            statusHeader(icon: "wifi", title: "Oyun kuruldu", subtitle: "Yakındaki oyuncuları bekliyorsunuz…")
+        VStack(spacing: AppTheme.Spacing.xl) {
+            VStack(spacing: AppTheme.Spacing.md) {
+                ZStack {
+                    Circle()
+                        .stroke(AppTheme.Colors.primary.opacity(0.3), lineWidth: 1)
+                        .frame(width: 100, height: 100)
+                        .scaleEffect(1.5)
+                        .opacity(0.5)
+                    
+                    Image(systemName: "wifi")
+                        .font(.system(size: 40))
+                        .foregroundStyle(AppTheme.Colors.primary)
+                        .modifier(SymbolEffectModifier(effect: .variableColor))
+                }
+                .padding(.top, AppTheme.Spacing.xxl)
+
+                Text("Oyun Kuruldu")
+                    .font(AppTheme.Font.headline())
+                    .foregroundStyle(AppTheme.Colors.text)
+                
+                Text("Arkadaşının seni bulmasını bekliyoruz...")
+                    .font(AppTheme.Font.body(14))
+                    .foregroundStyle(AppTheme.Colors.textSecondary)
+            }
 
             if let peer = vm.pendingInviteFrom {
                 invitationCard(peer: peer)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else {
+                VStack(spacing: AppTheme.Spacing.lg) {
+                    ProgressView()
+                        .tint(AppTheme.Colors.primary)
+                    Text("Görünen Adın: \(UIDevice.current.name)")
+                        .font(AppTheme.Font.caption())
+                        .foregroundStyle(AppTheme.Colors.textDisabled)
+                }
+                .padding()
+                .background(AppTheme.Colors.surface.opacity(0.5))
+                .cornerRadius(AppTheme.Radius.lg)
             }
 
             Spacer()
-            cancelButton { vm.cancel(); dismiss() }
+            
+            Button("Vazgeç") {
+                withAnimation {
+                    vm.cancel()
+                    dismiss()
+                }
+            }
+            .font(AppTheme.Font.body())
+            .foregroundStyle(AppTheme.Colors.textSecondary)
+            .padding(.bottom, AppTheme.Spacing.lg)
         }
     }
 
     // MARK: - Joining view
     private var joiningView: some View {
         VStack(spacing: AppTheme.Spacing.lg) {
-            statusHeader(icon: "magnifyingglass", title: "Oyunlar aranıyor…", subtitle: "Çevredeki oyun odaları listeleniyor")
-
-            if vm.discoveredPeers.isEmpty {
-                VStack(spacing: AppTheme.Spacing.sm) {
-                    ProgressView()
-                        .tint(AppTheme.Colors.primary)
-                        .scaleEffect(1.4)
-                    Text("Yakın cihazlar bekleniyor…")
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Oyunlar Aranıyor")
+                        .font(AppTheme.Font.headline())
+                        .foregroundStyle(AppTheme.Colors.text)
+                    Text("Yakındaki aktif odalar")
                         .font(AppTheme.Font.caption())
                         .foregroundStyle(AppTheme.Colors.textSecondary)
                 }
-                .frame(maxWidth: .infinity, minHeight: 120)
-                .surfaceStyle()
+                Spacer()
+                ProgressView()
+                    .tint(AppTheme.Colors.primary)
+            }
+            .padding(.top, AppTheme.Spacing.md)
+
+            if vm.discoveredPeers.isEmpty {
+                VStack(spacing: AppTheme.Spacing.lg) {
+                    Spacer()
+                    Image(systemName: "radar")
+                        .font(.system(size: 48))
+                        .foregroundStyle(AppTheme.Colors.textDisabled)
+                        .modifier(SymbolEffectModifier(effect: .pulse))
+                    
+                    Text("Henüz kimse oyun kurmadı...")
+                        .font(AppTheme.Font.body())
+                        .foregroundStyle(AppTheme.Colors.textSecondary)
+                    
+                    Text("Arkadaşının 'Oyun Kur' butonuna bastığından emin ol.")
+                        .font(AppTheme.Font.caption())
+                        .foregroundStyle(AppTheme.Colors.textDisabled)
+                        .multilineTextAlignment(.center)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 8) {
+                    LazyVStack(spacing: AppTheme.Spacing.md) {
                         ForEach(vm.discoveredPeers, id: \.displayName) { peer in
-                            peerRow(peer: peer) { vm.invitePeer(peer) }
+                            peerRow(peer: peer) { 
+                                withAnimation {
+                                    vm.invitePeer(peer)
+                                }
+                            }
                         }
                     }
+                    .padding(.top, 4)
                 }
             }
 
             Spacer()
-            cancelButton { vm.cancel(); dismiss() }
+            
+            Button("Geri Dön") {
+                withAnimation {
+                    vm.cancel()
+                }
+            }
+            .font(AppTheme.Font.body())
+            .foregroundStyle(AppTheme.Colors.textSecondary)
+            .padding(.bottom, AppTheme.Spacing.lg)
         }
     }
 
     // MARK: - Connecting view
     private var connectingView: some View {
-        VStack(spacing: AppTheme.Spacing.lg) {
+        VStack(spacing: AppTheme.Spacing.xl) {
             Spacer()
-            ProgressView()
-                .tint(AppTheme.Colors.primary)
-                .scaleEffect(1.8)
-            Text(vm.phase.description)
-                .font(AppTheme.Font.headline())
-                .foregroundStyle(AppTheme.Colors.text)
+            
+            ZStack {
+                Circle()
+                    .stroke(AppTheme.Colors.primary.opacity(0.2), lineWidth: 4)
+                    .frame(width: 80, height: 80)
+                
+                Circle()
+                    .trim(from: 0, to: 0.7)
+                    .stroke(AppTheme.Colors.primary, lineWidth: 4)
+                    .frame(width: 80, height: 80)
+                    .rotationEffect(.degrees(vm.phase == .connecting ? 360 : 0))
+                    .animation(.linear(duration: 1).repeatForever(autoreverses: false), value: vm.phase)
+            }
+            
+            VStack(spacing: AppTheme.Spacing.sm) {
+                Text(vm.phase == .connecting ? "Bağlanıyor..." : "Hazırlanıyor...")
+                    .font(AppTheme.Font.headline())
+                    .foregroundStyle(AppTheme.Colors.text)
+                
+                Text("Rakip ile el sıkışılıyor")
+                    .font(AppTheme.Font.caption())
+                    .foregroundStyle(AppTheme.Colors.textSecondary)
+            }
+            
             Spacer()
         }
     }
@@ -204,52 +329,147 @@ private struct NearbyLobbyContentView: View {
     }
 
     private func invitationCard(peer: MCPeerID) -> some View {
-        VStack(spacing: AppTheme.Spacing.sm) {
-            Text("\(peer.displayName) katılmak istiyor")
-                .font(AppTheme.Font.headline())
-                .foregroundStyle(AppTheme.Colors.text)
+        VStack(spacing: AppTheme.Spacing.md) {
+            HStack(spacing: AppTheme.Spacing.md) {
+                ZStack {
+                    Circle()
+                        .fill(AppTheme.Colors.primary.opacity(0.2))
+                        .frame(width: 50, height: 50)
+                    Image(systemName: "person.fill")
+                        .foregroundStyle(AppTheme.Colors.primary)
+                        .font(.title2)
+                }
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Bağlantı İsteği")
+                        .font(AppTheme.Font.caption())
+                        .foregroundStyle(AppTheme.Colors.textSecondary)
+                    Text("\(peer.displayName)")
+                        .font(AppTheme.Font.headline())
+                        .foregroundStyle(AppTheme.Colors.text)
+                }
+                Spacer()
+            }
+            .padding(.bottom, 4)
 
             HStack(spacing: AppTheme.Spacing.md) {
-                Button("Reddet") { vm.declineInvitation() }
-                    .font(AppTheme.Font.body())
-                    .foregroundStyle(AppTheme.Colors.error)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .surfaceStyle()
-                    .buttonStyle(.plain)
+                Button(action: { vm.declineInvitation() }) {
+                    Text("Reddet")
+                        .font(AppTheme.Font.body())
+                        .foregroundStyle(AppTheme.Colors.error)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(AppTheme.Colors.error.opacity(0.1))
+                        .cornerRadius(AppTheme.Radius.md)
+                }
+                .buttonStyle(.plain)
 
-                Button("Kabul Et") { vm.acceptInvitation() }
-                    .font(AppTheme.Font.body())
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(AppTheme.Colors.primary)
-                    .cornerRadius(AppTheme.Radius.lg)
-                    .buttonStyle(.plain)
+                Button(action: { vm.acceptInvitation() }) {
+                    Text("Kabul Et")
+                        .font(AppTheme.Font.body())
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(AppTheme.Colors.primary)
+                        .cornerRadius(AppTheme.Radius.md)
+                }
+                .buttonStyle(.plain)
             }
         }
-        .padding(AppTheme.Spacing.md)
-        .surfaceStyle(elevated: true)
+        .padding(AppTheme.Spacing.lg)
+        .background(AppTheme.Colors.surfaceHigh)
+        .cornerRadius(AppTheme.Radius.xl)
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.xl)
+                .stroke(AppTheme.Colors.primary.opacity(0.3), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.3), radius: 10, x: 0, y: 5)
     }
 
     private func peerRow(peer: MCPeerID, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack {
-                Image(systemName: "person.circle")
-                    .font(.title2)
-                    .foregroundStyle(AppTheme.Colors.primary)
-                Text(peer.displayName)
-                    .font(AppTheme.Font.body())
-                    .foregroundStyle(AppTheme.Colors.text)
+            HStack(spacing: AppTheme.Spacing.md) {
+                ZStack {
+                    Circle()
+                        .fill(AppTheme.Colors.surfaceHigh)
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "iphone")
+                        .font(.system(size: 20))
+                        .foregroundStyle(AppTheme.Colors.primary)
+                }
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(peer.displayName)
+                        .font(AppTheme.Font.headline())
+                        .foregroundStyle(AppTheme.Colors.text)
+                    Text("Oyna")
+                        .font(AppTheme.Font.caption())
+                        .foregroundStyle(AppTheme.Colors.primary)
+                }
+                
                 Spacer()
-                Text("Katıl")
-                    .font(AppTheme.Font.caption())
-                    .foregroundStyle(AppTheme.Colors.primary)
+                
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.Colors.textDisabled)
             }
             .padding(AppTheme.Spacing.md)
-            .surfaceStyle()
+            .background(AppTheme.Colors.surface)
+            .cornerRadius(AppTheme.Radius.lg)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.Radius.lg)
+                    .stroke(AppTheme.Colors.border.opacity(0.5), lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - New Components
+
+    struct LobbyMainButton: View {
+        let title: String
+        let subtitle: String
+        let icon: String
+        let color: Color
+        let action: () -> Void
+
+        var body: some View {
+            Button(action: action) {
+                HStack(spacing: AppTheme.Spacing.md) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.md)
+                            .fill(color.opacity(0.2))
+                            .frame(width: 50, height: 50)
+                        Image(systemName: icon)
+                            .font(.title3)
+                            .foregroundStyle(color)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title)
+                            .font(AppTheme.Font.headline())
+                            .foregroundStyle(AppTheme.Colors.text)
+                        Text(subtitle)
+                            .font(AppTheme.Font.caption())
+                            .foregroundStyle(AppTheme.Colors.textSecondary)
+                    }
+                    
+                    Spacer()
+                    
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.Colors.textDisabled)
+                }
+                .padding(AppTheme.Spacing.md)
+                .background(AppTheme.Colors.surface)
+                .cornerRadius(AppTheme.Radius.lg)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.lg)
+                        .stroke(AppTheme.Colors.border.opacity(0.5), lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     private func lobbyActionButton(title: String, icon: String, isPrimary: Bool, action: @escaping () -> Void) -> some View {
@@ -270,6 +490,37 @@ private struct NearbyLobbyContentView: View {
             .font(AppTheme.Font.body())
             .foregroundStyle(AppTheme.Colors.textSecondary)
             .padding(.bottom, AppTheme.Spacing.lg)
+    }
+}
+
+// MARK: - Compatibility Modifiers
+struct SymbolEffectModifier: ViewModifier {
+    enum EffectType { case bounce, variableColor, pulse }
+    let effect: EffectType
+    
+    @State private var animate = false
+
+    func body(content: Content) -> some View {
+        if #available(iOS 17.0, *) {
+            switch effect {
+            case .bounce:
+                content.symbolEffect(.bounce, options: .repeating)
+            case .variableColor:
+                content.symbolEffect(.variableColor.iterative, options: .repeating)
+            case .pulse:
+                content.symbolEffect(.pulse, options: .repeating)
+            }
+        } else {
+            // iOS 16 fallback: simple opacity or scale animation
+            content
+                .opacity(animate ? 0.5 : 1.0)
+                .scaleEffect(effect == .bounce && animate ? 1.1 : 1.0)
+                .onAppear {
+                    withAnimation(.easeInOut(duration: 1).repeatForever(autoreverses: true)) {
+                        animate = true
+                    }
+                }
+        }
     }
 }
 

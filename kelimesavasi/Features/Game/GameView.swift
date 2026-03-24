@@ -21,8 +21,7 @@ struct GameView: View {
             } else if let error = loadError {
                 errorView(error)
             } else {
-                ProgressView()
-                    .tint(AppTheme.Colors.primary)
+                GameLoadingView(mode: mode)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ExitToMainMenu"))) { _ in
@@ -34,21 +33,41 @@ struct GameView: View {
             dismiss()
         }
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(mode == .duel)
+        .navigationBarBackButtonHidden(true)
         .toolbar { toolbarContent }
         .task { await setupViewModel() }
     }
 
     @ViewBuilder
     private func errorView(_ error: String) -> some View {
-        VStack(spacing: 16) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.largeTitle)
-                .foregroundStyle(AppTheme.Colors.warning)
+        VStack(spacing: AppTheme.Spacing.lg) {
+            ZStack {
+                Circle()
+                    .fill(AppTheme.Colors.warning.opacity(0.12))
+                    .frame(width: 80, height: 80)
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 34))
+                    .foregroundStyle(AppTheme.Colors.warning)
+            }
+            Text("Kelime Yüklenemedi")
+                .font(.system(size: 20, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
             Text(error)
                 .font(AppTheme.Font.body())
                 .foregroundStyle(AppTheme.Colors.textSecondary)
                 .multilineTextAlignment(.center)
+            Button {
+                Task { await setupViewModel() }
+            } label: {
+                Label("Tekrar Dene", systemImage: "arrow.clockwise")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
+                    .background(AppTheme.Gradients.primaryButton)
+                    .cornerRadius(AppTheme.Radius.lg)
+            }
+            .buttonStyle(ScaleButtonStyle())
         }
         .padding()
     }
@@ -56,19 +75,28 @@ struct GameView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .principal) {
-            Text(mode == .solo ? "Solo Pratik" : "Yakın Düello")
-                .font(AppTheme.Font.headline())
-                .foregroundStyle(AppTheme.Colors.text)
+            HStack(spacing: 6) {
+                Image(systemName: mode == .solo ? "brain.head.profile" : "antenna.radiowaves.left.and.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(AppTheme.Colors.primary)
+                Text(mode == .solo ? "Solo Pratik" : "Yakın Düello")
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .foregroundStyle(AppTheme.Colors.text)
+            }
         }
-        if mode == .duel {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button {
+        ToolbarItem(placement: .navigationBarLeading) {
+            Button {
+                if mode == .duel {
                     env.multipeerService.disconnect()
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark")
-                        .foregroundStyle(AppTheme.Colors.textSecondary)
                 }
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(AppTheme.Colors.textSecondary)
+                    .frame(width: 32, height: 32)
+                    .background(AppTheme.Colors.surface)
+                    .clipShape(Circle())
             }
         }
     }
@@ -187,41 +215,54 @@ private struct GameContentView: View {
     @ViewBuilder
     private var statsBar: some View {
         HStack {
-            HStack(spacing: 4) {
+            // Coin balance
+            HStack(spacing: 5) {
                 Image(systemName: "circle.circle.fill")
-                    .foregroundColor(.yellow)
+                    .foregroundStyle(AppTheme.Colors.gold)
+                    .font(.system(size: 14))
                 Text("\(env.statsService.stats.coins)")
-                    .font(AppTheme.Font.headline())
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(AppTheme.Colors.text)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(AppTheme.Colors.surface)
-            .cornerRadius(12)
+            .cornerRadius(AppTheme.Radius.md)
 
             Spacer()
 
             let isSolo = mode == .solo
             let cost = isSolo ? 10 : 50
             Button(action: { viewModel.revealHint() }) {
-                HStack(spacing: 4) {
+                HStack(spacing: 5) {
                     Image(systemName: "lightbulb.fill")
-                    Text("İpucu (\(cost))")
+                        .font(.system(size: 13))
+                    Text("İpucu · \(cost)")
+                        .font(.system(size: 13, weight: .semibold))
                 }
-                .font(AppTheme.Font.caption())
                 .foregroundStyle(.white)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(env.statsService.stats.coins >= cost ? AppTheme.Colors.primary : Color.gray)
-                .cornerRadius(10)
+                .background {
+                    if env.statsService.stats.coins >= cost {
+                        AppTheme.Gradients.primaryButton
+                    } else {
+                        Color.gray.opacity(0.4)
+                    }
+                }
+                .cornerRadius(AppTheme.Radius.md)
             }
-            .disabled(env.statsService.stats.coins < cost)
+            .disabled(env.statsService.stats.coins < cost || viewModel.session.isFinished)
             .opacity(viewModel.session.isFinished ? 0 : 1)
+            .buttonStyle(ScaleButtonStyle())
 
             Button(action: reportWord) {
                 Image(systemName: "exclamationmark.bubble")
+                    .font(.system(size: 16))
                     .foregroundStyle(AppTheme.Colors.textSecondary)
-                    .padding(8)
+                    .frame(width: 34, height: 34)
+                    .background(AppTheme.Colors.surface)
+                    .cornerRadius(AppTheme.Radius.md)
             }
         }
     }
@@ -242,16 +283,77 @@ private struct GameContentView: View {
     private var toastLayer: some View {
         if let msg = viewModel.toastMessage {
             Text(msg)
-                .font(AppTheme.Font.caption(13))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(Color(hex: "222435").opacity(0.95))
-                .cornerRadius(AppTheme.Radius.pill)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 9)
+                .background(
+                    Capsule()
+                        .fill(Color(hex: "1C1F2E").opacity(0.96))
+                        .overlay(Capsule().stroke(AppTheme.Colors.border, lineWidth: 1))
+                )
+                .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
                 .transition(.move(edge: .top).combined(with: .opacity))
         } else {
             Color.clear
         }
+    }
+}
+
+// MARK: - Branded loading screen
+private struct GameLoadingView: View {
+    let mode: GameMode
+    @State private var rotation: Double = 0
+    @State private var appear = false
+
+    var body: some View {
+        VStack(spacing: AppTheme.Spacing.xl) {
+            // Tile row animation placeholder
+            HStack(spacing: 7) {
+                ForEach(0..<5) { i in
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                        .fill(AppTheme.Colors.surfaceHigh)
+                        .frame(width: 50, height: 50)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                                .stroke(AppTheme.Colors.border, lineWidth: 1)
+                        )
+                        .opacity(appear ? 1 : 0)
+                        .scaleEffect(appear ? 1 : 0.7)
+                        .animation(.spring(response: 0.4, dampingFraction: 0.7).delay(Double(i) * 0.08), value: appear)
+                }
+            }
+
+            VStack(spacing: AppTheme.Spacing.sm) {
+                // Spinner
+                ZStack {
+                    Circle()
+                        .stroke(AppTheme.Colors.border, lineWidth: 2.5)
+                        .frame(width: 52, height: 52)
+                    Circle()
+                        .trim(from: 0, to: 0.7)
+                        .stroke(
+                            AngularGradient(
+                                colors: [AppTheme.Colors.primary.opacity(0.1), AppTheme.Colors.primary],
+                                center: .center
+                            ),
+                            style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
+                        )
+                        .frame(width: 52, height: 52)
+                        .rotationEffect(.degrees(rotation))
+                }
+                .onAppear {
+                    withAnimation(.linear(duration: 0.9).repeatForever(autoreverses: false)) {
+                        rotation = 360
+                    }
+                }
+
+                Text(mode == .solo ? "Kelime Seçiliyor..." : "Düello Başlıyor...")
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .foregroundStyle(AppTheme.Colors.textSecondary)
+            }
+        }
+        .onAppear { appear = true }
     }
 }
 
