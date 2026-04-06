@@ -77,14 +77,21 @@ struct HomeView: View {
     private var heroSection: some View {
         VStack(spacing: AppTheme.Spacing.xl) {
             
-            // Main title
-            VStack(spacing: 4) {
-                Text("Kelime")
-                    .font(.system(size: 48, weight: .black, design: .rounded))
-                    .foregroundStyle(Color(white: 0.9)) // burayı istediğin değere göre ayarla
+            // Main title with Logo
+            VStack(spacing: AppTheme.Spacing.md) {
+                Image("Logo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 120, height: 120)
+                    .cornerRadius(28)
+                    .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
+
+                Text("KELİME")
+                    .font(.system(size: 40, weight: .black, design: .rounded))
+                    .foregroundStyle(Color(white: 0.95))
 
                 Text("DÜELLOSU")
-                    .font(.system(size: 32, weight: .heavy, design: .rounded))
+                    .font(.system(size: 28, weight: .heavy, design: .rounded))
                     .tracking(6)
                     .foregroundStyle(AppTheme.Colors.primary)
             }
