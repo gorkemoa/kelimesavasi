@@ -57,21 +57,15 @@ final class WordleGameEngine {
             switch (solved, opp.solved) {
             case (true, false):  winnerID = localPlayer.id
             case (false, true):  winnerID = opp.playerID
-            case (true, true):
+            case (true, true), (false, false):
+                // Both solved OR both failed - comparison rules:
+                // 1. Fewer guesses wins
+                // 2. Faster duration wins
                 if myPerf.guessCount < opp.guessCount {
                     winnerID = localPlayer.id
                 } else if myPerf.guessCount > opp.guessCount {
                     winnerID = opp.playerID
                 } else if myPerf.duration < opp.duration {
-                    winnerID = localPlayer.id
-                } else if myPerf.duration > opp.duration {
-                    winnerID = opp.playerID
-                } else {
-                    isDraw = true
-                }
-            case (false, false):
-                // Both failed - tie break by speed
-                if myPerf.duration < opp.duration {
                     winnerID = localPlayer.id
                 } else if myPerf.duration > opp.duration {
                     winnerID = opp.playerID

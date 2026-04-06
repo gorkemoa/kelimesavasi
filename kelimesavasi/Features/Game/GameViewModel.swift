@@ -309,18 +309,13 @@ final class GameViewModel: ObservableObject {
                         opponentPerformance: opponentPerformance
                     )
                     showResult = true
-                } else if payload.performance.solved {
-                    // Opponent solved it FIRST — end my game immediately and show result.
+                } else {
+                    // One person finished — end the game for everyone!
                     if !session.isFinished {
                         session.phase = .finished
                         session.endTime = Date()
                     }
                     finishGame(immediate: true)
-                } else {
-                    // Opponent finished WITHOUT solving (they used all 6 attempts and failed).
-                    // I can still win if I solve it correctly! Allow me to continue playing.
-                    let oppName = multipeerService?.connectedPeers.first?.displayName ?? "Rakip"
-                    showToast("\(oppName) \(payload.performance.guessCount) tahminde bilemedi! Sende sıra.")
                 }
             }
         case .rematchRequest:
