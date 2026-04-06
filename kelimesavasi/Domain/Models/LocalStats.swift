@@ -9,6 +9,7 @@ struct LocalStats: Codable, Sendable {
     var soloWins: Int
     var currentStreak: Int
     var maxStreak: Int
+    var currentLevel: Int
     var coins: Int
     var guessDistribution: [Int: Int]  // guessCount → frequency
 
@@ -27,6 +28,6 @@ struct LocalStats: Codable, Sendable {
     static let empty = LocalStats(
         totalGames: 0, wins: 0, losses: 0, draws: 0,
         soloPracticeGames: 0, soloWins: 0,
-        currentStreak: 0, maxStreak: 0, coins: 0, guessDistribution: [:]
+        currentStreak: 0, maxStreak: 0, currentLevel: 1, coins: 0, guessDistribution: [:]
     )
 }

@@ -215,6 +215,35 @@ private struct GameContentView: View {
     @ViewBuilder
     private var statsBar: some View {
         HStack {
+            // Level & Streak (Solo Mode)
+            if mode == .solo {
+                HStack(spacing: 12) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "star.fill")
+                            .foregroundStyle(AppTheme.Colors.primary)
+                            .font(.system(size: 13))
+                        Text("Seviye \(env.statsService.stats.currentLevel)")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+
+                    if env.statsService.stats.currentStreak > 0 {
+                        HStack(spacing: 4) {
+                            Image(systemName: "flame.fill")
+                                .foregroundStyle(.orange)
+                                .font(.system(size: 13))
+                            Text("\(env.statsService.stats.currentStreak)")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(.white)
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(AppTheme.Colors.surface.opacity(0.8))
+                .cornerRadius(AppTheme.Radius.md)
+            }
+
             // Coin balance
             HStack(spacing: 5) {
                 Image(systemName: "circle.circle.fill")
@@ -255,27 +284,6 @@ private struct GameContentView: View {
             .disabled(env.statsService.stats.coins < cost || viewModel.session.isFinished)
             .opacity(viewModel.session.isFinished ? 0 : 1)
             .buttonStyle(ScaleButtonStyle())
-
-            Button(action: reportWord) {
-                Image(systemName: "exclamationmark.bubble")
-                    .font(.system(size: 16))
-                    .foregroundStyle(AppTheme.Colors.textSecondary)
-                    .frame(width: 34, height: 34)
-                    .background(AppTheme.Colors.surface)
-                    .cornerRadius(AppTheme.Radius.md)
-            }
-        }
-    }
-
-    private func reportWord() {
-        let word = viewModel.session.targetWord.uppercased()
-        let body = "Bu kelime oyun listesinde olmalı: \(word)"
-        let encodedBody = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let mailUrl = URL(string: "mailto:gorkemoa35@gmail.com?subject=Kelime%20Savasi%20Kelime%20Bildirimi&body=\(encodedBody)")!
-        if UIApplication.shared.canOpenURL(mailUrl) {
-            UIApplication.shared.open(mailUrl)
-        } else {
-            viewModel.showToast("Mail uygulaması bulunamadı.")
         }
     }
 

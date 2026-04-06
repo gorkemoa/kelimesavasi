@@ -16,6 +16,12 @@ final class StatsService: ObservableObject {
             if result.iWon {
                 stats.soloWins += 1
                 stats.coins += 10
+                stats.currentStreak += 1
+                stats.maxStreak = max(stats.maxStreak, stats.currentStreak)
+                // Level up in solo practice
+                stats.currentLevel += 1
+            } else {
+                stats.currentStreak = 0
             }
         } else {
             stats.totalGames += 1

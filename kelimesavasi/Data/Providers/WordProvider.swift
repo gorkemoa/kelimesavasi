@@ -60,7 +60,7 @@ actor WordProvider {
         // Filter: non-empty, letters only (handles Turkish chars via CharacterSet.letters),
         // no spaces, slashes or digits.
         let allWords: [String] = lines.compactMap { line -> String? in
-            let trimmed = line.trimmingCharacters(in: .whitespaces).lowercased()
+            let trimmed = line.trimmingCharacters(in: .whitespaces).normalizedForGame
             guard !trimmed.isEmpty,
                   trimmed.unicodeScalars.allSatisfy({ CharacterSet.letters.contains($0) }) else {
                 return nil

@@ -69,7 +69,15 @@ final class WordleGameEngine {
                 } else {
                     isDraw = true
                 }
-            case (false, false): isDraw = true
+            case (false, false):
+                // Both failed - tie break by speed
+                if myPerf.duration < opp.duration {
+                    winnerID = localPlayer.id
+                } else if myPerf.duration > opp.duration {
+                    winnerID = opp.playerID
+                } else {
+                    isDraw = true
+                }
             }
         } else {
             // Solo mode

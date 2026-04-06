@@ -1,9 +1,17 @@
 import Foundation
 
 extension String {
-    /// Normalized lowercase version for comparison (Turkish-aware lowercasing).
+    /// Normalized lowercase version for comparison (Turkish-aware lowercasing and circumflex removal).
     var normalizedForGame: String {
-        self.lowercased()
+        self.lowercased(with: Locale(identifier: "tr"))
+            .replacingOccurrences(of: "â", with: "a")
+            .replacingOccurrences(of: "î", with: "i")
+            .replacingOccurrences(of: "û", with: "u")
+    }
+
+    /// Uppercased version for display (Turkish-aware uppercasing).
+    var uppercasedForGame: String {
+        self.uppercased(with: Locale(identifier: "tr"))
     }
 
     /// Returns an array of single-character strings for each Unicode character.

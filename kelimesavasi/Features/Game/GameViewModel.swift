@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import MultipeerConnectivity
 
 // MARK: - GameViewModel
 final class GameViewModel: ObservableObject {
@@ -20,7 +21,9 @@ final class GameViewModel: ObservableObject {
     // MARK: Duel state
     var isHost: Bool
     @Published var opponentPerformance: PlayerPerformance?
-    var opponentGuessCount: Int { session.opponentGuessCount }
+    /// Separate @Published so the progress view re-renders on every update.
+    /// (Mutating a nested value inside session does not reliably trigger SwiftUI.)
+    @Published private(set) var opponentGuessCount: Int = 0
     @Published var isOpponentDone: Bool = false
     private var hasFinishedGame = false
 
@@ -230,7 +233,9 @@ final class GameViewModel: ObservableObject {
 
     // MARK: - Private helpers
 
-    private func finishGame() {
+    /// - Parameter immediate: when true, skips the tile-reveal delay and shows result right away.
+    ///   Used when the opponent finishes and we need to sync both screens simultaneously.
+    private func finishGame(immediate: Bool = false) {
         guard !hasFinishedGame else { return }
         hasFinishedGame = true
         let localPlayer = Player(name: settings.playerName)
@@ -240,9 +245,13 @@ final class GameViewModel: ObservableObject {
         gameResult = result
         stats.record(result: result)
 
-        // Show result after reveal animation
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-            self?.showResult = true
+        if immediate {
+            showResult = true
+        } else {
+            // Delay matches tile flip animation so the board is visible before the sheet.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                self?.showResult = true
+            }
         }
     }
 
@@ -268,44 +277,50 @@ final class GameViewModel: ObservableObject {
     }
 
     private func subscribeToMessages() {
-        multipeerService?.messageHandler = { [weak self] message in
-            self?.handlePeerMessage(message)
-        }
+        multipeerService?.incomingMessages
+            .receive(on: RunLoop.main)
+            .sink { [weak self] message in
+                self?.handlePeerMessage(message)
+            }
+            .store(in: &cancellables)
     }
+
+    private var cancellables = Set<AnyCancellable>()
 
     private func handlePeerMessage(_ message: PeerMessage) {
         switch message.type {
         case .opponentProgress:
             if let payload = try? message.decode(ProgressPayload.self) {
                 session.opponentGuessCount = payload.guessCount
+                opponentGuessCount = payload.guessCount   // triggers SwiftUI refresh
             }
         case .gameCompleted:
             if let payload = try? message.decode(GameCompletedPayload.self) {
                 opponentPerformance = payload.performance
+                opponentGuessCount = payload.performance.guessCount  // final count
                 isOpponentDone = true
-                if session.isFinished {
-                    if hasFinishedGame {
-                        // Already showed result locally — refresh it with opponent data
-                        let localPlayer = Player(name: settings.playerName)
-                        gameResult = engine.computeResult(
-                            session: session,
-                            localPlayer: localPlayer,
-                            opponentPerformance: opponentPerformance
-                        )
-                        // Ensure sheet is still visible
-                        if !showResult {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-                                self?.showResult = true
-                            }
-                        }
-                    } else {
+                if hasFinishedGame {
+                    // I already finished — recompute result with full opponent data and
+                    // make sure the sheet is shown immediately (no additional delay).
+                    let localPlayer = Player(name: settings.playerName)
+                    gameResult = engine.computeResult(
+                        session: session,
+                        localPlayer: localPlayer,
+                        opponentPerformance: opponentPerformance
+                    )
+                    showResult = true
+                } else if payload.performance.solved {
+                    // Opponent solved it FIRST — end my game immediately and show result.
+                    if !session.isFinished {
                         session.phase = .finished
-                        finishGame()
+                        session.endTime = Date()
                     }
+                    finishGame(immediate: true)
                 } else {
-                    // Opponent finished, but I haven't. I MUST show result screen now because the game is over.
-                    session.phase = .finished
-                    finishGame()
+                    // Opponent finished WITHOUT solving (they used all 6 attempts and failed).
+                    // I can still win if I solve it correctly! Allow me to continue playing.
+                    let oppName = multipeerService?.connectedPeers.first?.displayName ?? "Rakip"
+                    showToast("\(oppName) \(payload.performance.guessCount) tahminde bilemedi! Sende sıra.")
                 }
             }
         case .rematchRequest:

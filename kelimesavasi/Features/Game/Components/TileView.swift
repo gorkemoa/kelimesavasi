@@ -40,7 +40,7 @@ struct TileView: View {
                         .stroke(borderColor, lineWidth: 2)
                 )
 
-            Text(letter.uppercased())
+            Text(letter.uppercasedForGame)
                 .font(AppTheme.Font.tile(size * 0.45))
                 .foregroundStyle(AppTheme.Colors.text)
                 .scaleEffect(state == .filled && !letter.isEmpty ? 1.08 : 1.0)

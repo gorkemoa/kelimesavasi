@@ -13,7 +13,7 @@ enum AppRoute: Hashable {
 // MARK: - App Router
 struct AppRouter: View {
     @EnvironmentObject var env: AppEnvironment
-    @State private var path = NavigationPath()
+    @State private var path: [AppRoute] = []
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -34,9 +34,13 @@ struct AppRouter: View {
 
         case .nearbyLobby:
             NearbyLobbyView { targetWord, config, isHost in
-                path.append(AppRoute.duelGame(targetWord: targetWord,
-                                              config: config,
-                                              isHost: isHost))
+                let gameRoute = AppRoute.duelGame(targetWord: targetWord,
+                                               config: config,
+                                               isHost: isHost)
+                // Prevent duplicate pushes of the same game session
+                if path.last != gameRoute {
+                    path.append(gameRoute)
+                }
             }
             .navigationBarBackButtonHidden(true)
 

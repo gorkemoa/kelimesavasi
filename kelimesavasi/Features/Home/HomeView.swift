@@ -9,41 +9,44 @@ struct HomeView: View {
     @State private var buttonsVisible = false
     @State private var tileScale: [CGFloat] = [1, 1, 1, 1, 1]
 
-    private let tileLetters = ["S", "A", "V", "A", "Ş"]
-    private let tileStates: [TileState] = [.correct, .correct, .present, .absent, .correct]
+    private let tileLetters = ["O", "Y", "U", "N", "U"]
+    private let tileStates: [TileState] = [.correct, .correct, .correct, .correct, .correct]
 
     var body: some View {
         ZStack {
             backgroundLayer
 
             VStack(spacing: 0) {
-                Spacer()
+                Spacer(minLength: 20)
 
                 heroSection
                     .opacity(heroVisible ? 1 : 0)
-                    .offset(y: heroVisible ? 0 : 24)
+                    .offset(y: heroVisible ? 0 : 20)
+                    .padding(.top, 40) // Kırpılmayı önlemek için üstten boşluk
 
                 Spacer()
 
                 menuSection
                     .opacity(buttonsVisible ? 1 : 0)
-                    .offset(y: buttonsVisible ? 0 : 32)
+                    .offset(y: buttonsVisible ? 0 : 30)
                     .padding(.horizontal, AppTheme.Spacing.lg)
 
-                Spacer(minLength: AppTheme.Spacing.md)
+                Spacer()
 
                 bottomBar
+                    .opacity(buttonsVisible ? 1 : 0)
+                    .padding(.bottom, AppTheme.Spacing.lg)
             }
         }
         .navigationBarHidden(true)
         .onAppear {
-            withAnimation(.spring(response: 0.7, dampingFraction: 0.75).delay(0.1)) {
+            withAnimation(.easeOut(duration: 0.8)) {
                 heroVisible = true
             }
-            withAnimation(.spring(response: 0.7, dampingFraction: 0.75).delay(0.35)) {
+            withAnimation(.easeOut(duration: 0.8).delay(0.2)) {
                 buttonsVisible = true
             }
-            withAnimation(.easeInOut(duration: 2.8).repeatForever(autoreverses: true)) {
+            withAnimation(.easeInOut(duration: 4).repeatForever(autoreverses: true)) {
                 glowPulse = true
             }
             animateTilesOnAppear()
@@ -55,59 +58,45 @@ struct HomeView: View {
         ZStack {
             AppTheme.Colors.background.ignoresSafeArea()
 
-            // Top blue ambient glow
-            EllipticalGradient(
-                colors: [AppTheme.Colors.primary.opacity(glowPulse ? 0.20 : 0.10), .clear],
-                center: .init(x: 0.5, y: 0),
-                endRadiusFraction: 0.55
-            )
-            .ignoresSafeArea()
-            .frame(height: 380)
-            .frame(maxHeight: .infinity, alignment: .top)
+            // Subtle mesh gradient-like effect
+            Circle()
+                .fill(AppTheme.Colors.primary.opacity(glowPulse ? 0.15 : 0.08))
+                .frame(width: 400, height: 400)
+                .blur(radius: 80)
+                .offset(x: -150, y: -250)
 
-            // Bottom purple tint
-            EllipticalGradient(
-                colors: [Color(hex: "4A3F8F").opacity(0.14), .clear],
-                center: .init(x: 0.5, y: 1),
-                endRadiusFraction: 0.55
-            )
-            .ignoresSafeArea()
-            .frame(height: 300)
-            .frame(maxHeight: .infinity, alignment: .bottom)
+            Circle()
+                .fill(Color(hex: "4A3F8F").opacity(glowPulse ? 0.12 : 0.06))
+                .frame(width: 350, height: 350)
+                .blur(radius: 70)
+                .offset(x: 180, y: 300)
         }
     }
 
     // MARK: - Hero
     private var heroSection: some View {
-        VStack(spacing: AppTheme.Spacing.lg) {
-            // Brand badge
-            Text("⚔️  KELİME SAVAŞI")
-                .font(.system(size: 12, weight: .bold, design: .rounded))
-                .tracking(3)
-                .foregroundStyle(AppTheme.Colors.primary)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 6)
-                .background(AppTheme.Colors.primary.opacity(0.12))
-                .clipShape(Capsule())
-                .overlay(Capsule().stroke(AppTheme.Colors.primary.opacity(0.3), lineWidth: 1))
-
+        VStack(spacing: AppTheme.Spacing.xl) {
+            
             // Main title
-            VStack(spacing: 2) {
-                Text("Hızlı Düşün")
-                    .font(.system(size: 38, weight: .black, design: .rounded))
-                    .foregroundStyle(.white)
-                Text("Hızlı Yaz • Kazan")
-                    .font(.system(size: 22, weight: .semibold, design: .rounded))
-                    .foregroundStyle(AppTheme.Colors.textSecondary)
+            VStack(spacing: 4) {
+                Text("Kelime")
+                    .font(.system(size: 48, weight: .black, design: .rounded))
+                    .foregroundStyle(Color(white: 0.9)) // burayı istediğin değere göre ayarla
+
+                Text("DÜELLOSU")
+                    .font(.system(size: 32, weight: .heavy, design: .rounded))
+                    .tracking(6)
+                    .foregroundStyle(AppTheme.Colors.primary)
             }
 
-            // Animated demo tiles
-            HStack(spacing: 7) {
+            // High-end Tiles Display
+            HStack(spacing: 12) {
                 ForEach(0..<tileLetters.count, id: \.self) { i in
                     heroTile(letter: tileLetters[i], state: tileStates[i])
                         .scaleEffect(tileScale[i])
                 }
             }
+            .padding(.top, 10)
         }
     }
 
@@ -119,122 +108,186 @@ struct HomeView: View {
             default:       return AppTheme.Colors.absent
             }
         }()
-        return Text(letter)
-            .font(.system(size: 21, weight: .bold))
-            .foregroundStyle(.white)
-            .frame(width: 52, height: 52)
-            .background(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                    .fill(color)
-                    .shadow(color: color.opacity(0.45), radius: 8, x: 0, y: 4)
-            )
+
+        return ZStack {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [AppTheme.Colors.surfaceHigh, AppTheme.Colors.surface],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .shadow(color: .black.opacity(0.4), radius: 8, x: 0, y: 4)
+
+            // Inner glow for premium look
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(color.opacity(0.12))
+
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [color.opacity(0.8), color.opacity(0.2)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1.5
+                )
+
+            Text(letter)
+                .font(.system(size: 26, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .shadow(color: color.opacity(0.4), radius: 3)
+        }
+        .frame(width: 60, height: 60)
+        .overlay(
+            // Top highlight reflection
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(
+                    LinearGradient(
+                        colors: [.white.opacity(0.2), .clear, .clear],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
+        )
     }
 
     private func animateTilesOnAppear() {
         for i in 0..<tileLetters.count {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6 + Double(i) * 0.1) {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
-                    tileScale[i] = 1.18
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-                        tileScale[i] = 1.0
-                    }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5 + Double(i) * 0.08) {
+                withAnimation(.interpolatingSpring(stiffness: 120, damping: 12)) {
+                    tileScale[i] = 1.0
                 }
             }
+        }
+        // Set initial scale to 0.8 to animate up
+        for i in 0..<tileScale.count {
+            tileScale[i] = 0.8
         }
     }
 
     // MARK: - Menu
     private var menuSection: some View {
-        VStack(spacing: AppTheme.Spacing.sm) {
-            // PRIMARY: Yakın Düello
-            Button { onNavigate(.nearbyLobby) } label: {
-                HStack(spacing: AppTheme.Spacing.md) {
-                    ZStack {
-                        Circle()
-                            .fill(.white.opacity(0.15))
-                            .frame(width: 50, height: 50)
-                        Image(systemName: "antenna.radiowaves.left.and.right")
-                            .font(.system(size: 22, weight: .semibold))
-                            .foregroundStyle(.white)
-                    }
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Yakın Düello")
-                            .font(.system(size: 18, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                        Text("Yakındaki oyuncu ile 1v1 düello")
-                            .font(.system(size: 13))
-                            .foregroundStyle(.white.opacity(0.72))
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.65))
-                }
-                .padding(AppTheme.Spacing.md)
-                .background(AppTheme.Gradients.primaryButton)
-                .cornerRadius(AppTheme.Radius.lg)
-                .shadow(color: AppTheme.Colors.primary.opacity(0.40), radius: 16, x: 0, y: 8)
-            }
-            .buttonStyle(ScaleButtonStyle())
-
-            // SECONDARY: Solo Pratik
+        VStack(spacing: AppTheme.Spacing.md) {
+            // MAIN ACTION: SOLO PRATİK (ÖNE ÇIKAN)
             Button { onNavigate(.soloGame) } label: {
-                HStack(spacing: AppTheme.Spacing.md) {
-                    ZStack {
-                        Circle()
-                            .fill(AppTheme.Colors.surfaceHigh)
-                            .frame(width: 50, height: 50)
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack {
                         Image(systemName: "brain.head.profile")
-                            .font(.system(size: 22, weight: .semibold))
-                            .foregroundStyle(AppTheme.Colors.primary)
+                            .font(.system(size: 24, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 50, height: 50)
+                            .background(Circle().fill(.white.opacity(0.25)))
+
+                        Spacer()
+
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 32))
+                            .foregroundStyle(.white)
                     }
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Solo Pratik")
-                            .font(.system(size: 18, weight: .bold, design: .rounded))
-                            .foregroundStyle(AppTheme.Colors.text)
-                        Text("Tek başına kelime bul, becerini geliştir")
-                            .font(.system(size: 13))
-                            .foregroundStyle(AppTheme.Colors.textSecondary)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("SOLO PRATİK")
+                            .font(.system(size: 22, weight: .black, design: .rounded))
+                            .foregroundStyle(.white)
+                        Text("Zihnini tazele, rekorlarını kır")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.9))
                     }
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(AppTheme.Colors.textDisabled)
                 }
-                .padding(AppTheme.Spacing.md)
-                .background(AppTheme.Colors.surface)
-                .cornerRadius(AppTheme.Radius.lg)
-                .overlay(RoundedRectangle(cornerRadius: AppTheme.Radius.lg)
-                    .stroke(AppTheme.Colors.border, lineWidth: 1))
+                .padding(24)
+                .background(
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color(hex: "4776E6"), Color(hex: "8E54E9")],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .shadow(color: Color(hex: "8E54E9").opacity(0.4), radius: 20, x: 0, y: 10)
+                )
             }
             .buttonStyle(ScaleButtonStyle())
 
-            // Quick actions row
-            HStack(spacing: AppTheme.Spacing.sm) {
-                quickActionButton(icon: "chart.bar.fill", label: "İstatistik") { onNavigate(.stats) }
-                quickActionButton(icon: "gearshape.fill", label: "Ayarlar") { onNavigate(.settings) }
+            // SECONDARY ACTIONS
+            HStack(spacing: AppTheme.Spacing.md) {
+                // YAKIN DÜELLO
+                menuSecondaryCard(
+                    title: "DÜELLO",
+                    sub: "Arkadaşınla",
+                    icon: "antenna.radiowaves.left.and.right",
+                    color: Color(hex: "FF512F"),
+                    secondaryColor: Color(hex: "DD2476")
+                ) {
+                    onNavigate(.nearbyLobby)
+                }
+
+                // İSTATİSTİK
+                menuSecondaryCard(
+                    title: "SKOR",
+                    sub: "Başarıların",
+                    icon: "chart.bar.fill",
+                    color: Color(hex: "1D976C"),
+                    secondaryColor: Color(hex: "93F9B9")
+                ) {
+                    onNavigate(.stats)
+                }
             }
+
+            // Settings link
+            Button { onNavigate(.settings) } label: {
+                HStack {
+                    Image(systemName: "gearshape.fill")
+                    Text("Ayarlar ve Profil")
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .bold))
+                }
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(AppTheme.Colors.textSecondary)
+                .padding()
+                .background(RoundedRectangle(cornerRadius: 16).fill(AppTheme.Colors.surface))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppTheme.Colors.border, lineWidth: 1))
+            }
+            .buttonStyle(ScaleButtonStyle())
+            .padding(.top, 8)
         }
     }
 
-    private func quickActionButton(icon: String, label: String, action: @escaping () -> Void) -> some View {
+    private func menuSecondaryCard(title: String, sub: String, icon: String, color: Color, secondaryColor: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 7) {
+            VStack(alignment: .leading, spacing: 12) {
                 Image(systemName: icon)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(AppTheme.Colors.primary)
-                Text(label)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(AppTheme.Colors.textSecondary)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(Circle().fill(.white.opacity(0.2)))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                    Text(sub)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.8))
+                }
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(AppTheme.Colors.surface)
-            .cornerRadius(AppTheme.Radius.md)
-            .overlay(RoundedRectangle(cornerRadius: AppTheme.Radius.md)
-                .stroke(AppTheme.Colors.border, lineWidth: 1))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(20)
+            .background(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [color, secondaryColor],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            )
+            .shadow(color: color.opacity(0.3), radius: 10, x: 0, y: 5)
         }
         .buttonStyle(ScaleButtonStyle())
     }

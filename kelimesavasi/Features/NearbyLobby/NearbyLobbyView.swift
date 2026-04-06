@@ -5,6 +5,7 @@ import MultipeerConnectivity
 struct NearbyLobbyView: View {
     var onGameReady: (String?, GameConfig, Bool) -> Void
     @EnvironmentObject var env: AppEnvironment
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NearbyLobbyContentView(
@@ -16,6 +17,17 @@ struct NearbyLobbyView: View {
         )
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                        Text("Geri")
+                    }
+                    .foregroundStyle(AppTheme.Colors.primary)
+                }
+            }
             ToolbarItem(placement: .principal) {
                 Text("Yakın Düello")
                     .font(AppTheme.Font.headline())
@@ -50,9 +62,18 @@ private struct NearbyLobbyContentView: View {
     var body: some View {
         ZStack {
             AppTheme.Colors.background.ignoresSafeArea()
+            
+            // Background ambient glow
+            Circle()
+                .fill(AppTheme.Colors.primary.opacity(0.1))
+                .frame(width: 400, height: 400)
+                .blur(radius: 80)
+                .offset(x: -150, y: -250)
+
             lobbyContent
         }
         .onDisappear { vm.cancelIfNeeded() }
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     // MARK: - Content
@@ -74,68 +95,116 @@ private struct NearbyLobbyContentView: View {
             }
         }
         .padding(.horizontal, AppTheme.Spacing.lg)
-        .padding(.top, AppTheme.Spacing.lg)
+        .padding(.vertical, AppTheme.Spacing.lg)
     }
+
+    @State private var pulseScale: CGFloat = 1.0
 
     // MARK: - Role chooser
     private var roleChooser: some View {
         VStack(spacing: AppTheme.Spacing.xl) {
             Spacer()
             
-            // Animasyonlu İkon Alanı
+            // High-end Animated Icon
             ZStack {
                 Circle()
-                    .stroke(AppTheme.Colors.primary.opacity(0.2), lineWidth: 2)
-                    .frame(width: 120, height: 120)
-                    .scaleEffect(vm.phase == .choosingRole ? 1.2 : 1.0)
-                    .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: vm.phase)
+                    .stroke(
+                        LinearGradient(colors: [AppTheme.Colors.primary, .clear], startPoint: .top, endPoint: .bottom),
+                        lineWidth: 2
+                    )
+                    .frame(width: 140, height: 140)
+                    .rotationEffect(.degrees(vm.phase == .choosingRole ? 360 : 0))
+                    .animation(.linear(duration: 8).repeatForever(autoreverses: false), value: vm.phase)
                 
                 Circle()
                     .fill(AppTheme.Colors.primary.opacity(0.1))
-                    .frame(width: 100, height: 100)
+                    .frame(width: 110, height: 110)
                 
                 Image(systemName: "antenna.radiowaves.left.and.right")
-                    .font(.system(size: 40))
+                    .font(.system(size: 44, weight: .bold))
                     .foregroundStyle(AppTheme.Colors.primary)
-                    .modifier(SymbolEffectModifier(effect: .bounce))
+                    .scaleEffect(pulseScale)
+                    .onAppear {
+                        withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+                            pulseScale = 1.15
+                        }
+                    }
             }
-            .padding(.bottom, AppTheme.Spacing.md)
 
-            VStack(spacing: AppTheme.Spacing.sm) {
+            VStack(spacing: AppTheme.Spacing.md) {
                 Text("Yakın Düello")
-                    .font(AppTheme.Font.title())
-                    .foregroundStyle(AppTheme.Colors.text)
+                    .font(.system(size: 32, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
                 
-                Text("Aynı Wi-Fi veya Bluetooth ağındaki\narkadaşlarınla gerçek zamanlı yarış.")
-                    .font(AppTheme.Font.body(16))
+                Text("Aynı ağdaki arkadaşınla\ngerçek zamanlı kelime kapışması.")
+                    .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(AppTheme.Colors.textSecondary)
                     .multilineTextAlignment(.center)
                     .lineSpacing(4)
             }
+            .padding(.top, 10)
 
             Spacer()
 
             VStack(spacing: AppTheme.Spacing.md) {
-                LobbyMainButton(
-                    title: "Oyun Kur",
-                    subtitle: "Diğer oyuncuların katılması için bekle",
+                lobbyActionButton(
+                    title: "OYUN KUR",
+                    subtitle: "Lider ol, arkadaşını davet et",
                     icon: "crown.fill",
-                    color: AppTheme.Colors.primary
+                    gradient: [Color(hex: "FF512F"), Color(hex: "DD2476")]
                 ) {
                     vm.startHosting()
                 }
                 
-                LobbyMainButton(
-                    title: "Oyuna Katıl",
-                    subtitle: "Kurulmuş bir oyunu ara ve katıl",
+                lobbyActionButton(
+                    title: "OYUNA KATIL",
+                    subtitle: "Kurulu olan odayı bul",
                     icon: "person.2.fill",
-                    color: AppTheme.Colors.surfaceHigh
+                    gradient: [Color(hex: "4776E6"), Color(hex: "8E54E9")]
                 ) {
                     vm.startJoining()
                 }
             }
             .padding(.bottom, AppTheme.Spacing.xl)
         }
+    }
+
+    private func lobbyActionButton(title: String, subtitle: String, icon: String, gradient: [Color], action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 20) {
+                ZStack {
+                    Circle()
+                        .fill(.white.opacity(0.2))
+                        .frame(width: 54, height: 54)
+                    Image(systemName: icon)
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 18, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
+                    Text(subtitle)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.white.opacity(0.8))
+                }
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.5))
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 18)
+            .background(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(LinearGradient(colors: gradient, startPoint: .leading, endPoint: .trailing))
+                    .shadow(color: gradient.first?.opacity(0.3) ?? .clear, radius: 12, x: 0, y: 6)
+            )
+        }
+        .buttonStyle(ScaleButtonStyle())
     }
 
     // MARK: - Hosting view
@@ -216,7 +285,7 @@ private struct NearbyLobbyContentView: View {
             if vm.discoveredPeers.isEmpty {
                 VStack(spacing: AppTheme.Spacing.lg) {
                     Spacer()
-                    Image(systemName: "radar")
+                    Image(systemName: "antenna.radiowaves.left.and.right")
                         .font(.system(size: 48))
                         .foregroundStyle(AppTheme.Colors.textDisabled)
                         .modifier(SymbolEffectModifier(effect: .pulse))

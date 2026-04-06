@@ -44,7 +44,7 @@ struct KeyboardView: View {
         Button {
             onLetter(letter)
         } label: {
-            Text(letter.uppercased())
+            Text(letter.uppercasedForGame)
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(AppTheme.Colors.text)
                 .frame(maxWidth: .infinity)

@@ -32,18 +32,19 @@ final class NearbyLobbyViewModel: ObservableObject {
     @Published private(set) var isHost = false
 
     private var gameStarted = false
+    /// Tracks if onGameReady has been called to prevent multiple navigations in one session.
+    private var didNavigateToGame = false
+    /// Prevents handleConnected from being triggered more than once per physical connection.
+    /// MC can fire .connected multiple times; this flag stops duplicate handshake starts.
+    private var handshakeStarted = false
     private let sessionManager: MultipeerSessionManager
     private let discoveryService: NearbyDiscoveryService
     private let settings: SettingsService
     private let wordRepository: WordRepositoryProtocol
     private var cancellables = Set<AnyCancellable>()
 
-    // Host handshake state
-    private var pendingTargetWord: String?
-    private var receivedPlayerReady = false
-
-    // Guest handshake state
-    private var playerReadyTask: Task<Void, Never>?
+    /// Watchdog task that times out the guest if gameStarted is never received.
+    private var guestWatchdogTask: Task<Void, Never>?
 
     var onGameReady: ((String?, GameConfig, Bool) -> Void)?  // (targetWord, config, isHost)
 
@@ -69,22 +70,35 @@ final class NearbyLobbyViewModel: ObservableObject {
                 guard let self else { return }
                 switch state {
                 case .connected:
-                    guard !gameStarted else { return }
+                    // Guard against duplicate .connected events for the same connection.
+                    // MC can fire .connected multiple times; without this guard,
+                    // handshake state (receivedPlayerReady, pendingTargetWord) gets reset mid-flow.
+                    guard !gameStarted, !handshakeStarted else { return }
+                    handshakeStarted = true
                     handleConnected(isHost: isHost)
                 case .disconnected:
-                    playerReadyTask?.cancel()
-                    playerReadyTask = nil
+                    // Capture before resetting — if handshakeStarted is false this is a
+                    // phantom cleanup event (from session recreation) — do NOT show error.
+                    let wasHandshaking = handshakeStarted
+                    handshakeStarted = false
+                    guestWatchdogTask?.cancel()
+                    guestWatchdogTask = nil
+                    
                     if gameStarted {
-                        // User exited the game — reset lobby to initial state
-                        gameStarted = false
-                        phase = .choosingRole
-                    } else {
+                        // We are already in or transitioning to a game. 
+                        // Do NOT reset gameStarted or phase here, as MC can bounce connections 
+                        // during handshake. If the connection is truly lost, the GameViewModel 
+                        // or the user dismissing the view will handle it.
+                        // Resetting here while the Host's retry loop is active causes 
+                        // the "repeated navigation" bug.
+                    } else if wasHandshaking {
                         let activePhase = phase == .hosting || phase == .joining ||
                                           phase == .connecting || phase == .waitingForStart
                         if activePhase {
                             phase = .error("Bağlantı kesildi. Lütfen tekrar deneyin.")
                         }
                     }
+                    // else: phantom disconnect from cleanup — ignore silently
                 default:
                     break
                 }
@@ -107,8 +121,8 @@ final class NearbyLobbyViewModel: ObservableObject {
     func startHosting() {
         isHost = true
         gameStarted = false
-        receivedPlayerReady = false
-        pendingTargetWord = nil
+        didNavigateToGame = false
+        handshakeStarted = false
         phase = .hosting
         sessionManager.updatePlayerName(settings.playerName)
         discoveryService.startAdvertising(peer: sessionManager.myPeerID)
@@ -119,6 +133,8 @@ final class NearbyLobbyViewModel: ObservableObject {
     func startJoining() {
         isHost = false
         gameStarted = false
+        didNavigateToGame = false
+        handshakeStarted = false
         phase = .joining
         sessionManager.updatePlayerName(settings.playerName)
         discoveryService.startBrowsing(peer: sessionManager.myPeerID)
@@ -150,8 +166,11 @@ final class NearbyLobbyViewModel: ObservableObject {
     }
 
     func cancel() {
-        playerReadyTask?.cancel()
-        playerReadyTask = nil
+        guestWatchdogTask?.cancel()
+        guestWatchdogTask = nil
+        handshakeStarted = false
+        gameStarted = false
+        didNavigateToGame = false
         discoveryService.stopAll()
         sessionManager.disconnect()
         phase = .choosingRole
@@ -160,135 +179,124 @@ final class NearbyLobbyViewModel: ObservableObject {
     // MARK: - Peer messages
 
     private func subscribeToMessages() {
-        sessionManager.messageHandler = { [weak self] message in
-            self?.handleMessage(message)
-        }
+        sessionManager.incomingMessages
+            .receive(on: RunLoop.main)
+            .sink { [weak self] message in
+                self?.handleMessage(message)
+            }
+            .store(in: &cancellables)
     }
 
     private func handleMessage(_ message: PeerMessage) {
         switch message.type {
         case .gameStarted:
-            // Guest receives game start from host
-            guard let payload = try? message.decode(GameStartedPayload.self) else { return }
-            playerReadyTask?.cancel()
-            playerReadyTask = nil
+            // Guest receives game start from host.
+            guard !gameStarted,
+                  let payload = try? message.decode(GameStartedPayload.self) else { return }
+            guestWatchdogTask?.cancel()
+            guestWatchdogTask = nil
             gameStarted = true
-            // Match the state of host to avoid re-triggering logic
             phase = .connecting
-            onGameReady?(payload.targetWord, payload.config, false)
-
-        case .playerReady:
-            // Host receives ready signal from guest — MC channels are proven open
-            receivedPlayerReady = true
-            if pendingTargetWord != nil {
-                triggerGameStart()
+            
+            if !didNavigateToGame {
+                didNavigateToGame = true
+                onGameReady?(payload.targetWord, payload.config, false)
             }
-            // else: word not yet picked, triggerGameStart() will be called from pickTargetWord()
 
         case .rematchRequest:
-            // Forward to game VM if active
             NotificationCenter.default.post(name: NSNotification.Name("PeerRematchRequested"), object: nil)
+
         case .rematchAccepted:
             NotificationCenter.default.post(name: NSNotification.Name("RestartGame"), object: nil)
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 gameStarted = false
-                receivedPlayerReady = false
-                pendingTargetWord = nil
-                
-                // Önceki bağlantıyı temizleyip el sıkışma (handshake) için taze bir başlangıç yapıyoruz
+                didNavigateToGame = false
+                handshakeStarted = true  // session still connected — skip re-trigger from subscriber
+                // Allow the game screen to dismiss before restarting handshake
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
                 if isHost {
                     phase = .connecting
-                    // Navigasyonun kapanması ve soketlerin boşalması için yeterli süre bekliyoruz
-                    try? await Task.sleep(nanoseconds: 1_500_000_000)
-                    pickTargetWord()
+                    pickTargetWordAndStart()
                 } else {
                     phase = .waitingForStart
-                    try? await Task.sleep(nanoseconds: 1_500_000_000)
-                    startSendingPlayerReady()
+                    startGuestWatchdog()
                 }
             }
+
         default:
             break
         }
     }
 
-    // MARK: - Host handshake
+    // MARK: - Handshake
 
     func handleConnected(isHost: Bool) {
+        discoveryService.stopAll()
         if isHost {
-            discoveryService.stopAll()
-            phase = .connecting  // keep spinner while waiting for guest's playerReady
-            receivedPlayerReady = false
-            pendingTargetWord = nil
-            pickTargetWord()
+            phase = .connecting
+            pickTargetWordAndStart()
         } else {
-            discoveryService.stopAll()
             phase = .waitingForStart
-            startSendingPlayerReady()
+            startGuestWatchdog()
         }
     }
 
-    private func pickTargetWord() {
+    // MARK: - Host: pick word and broadcast gameStarted for up to 30 seconds
+    //
+    // DESIGN NOTE: We do NOT use a playerReady → gameStarted round-trip.
+    // The old design broke because GameViewModel.subscribeToMessages() overwrites
+    // sessionManager.messageHandler when the host navigates to GameView, so any
+    // subsequent playerReady messages from the guest are silently discarded.
+    //
+    // Instead, the host starts an independent Task.detached that keeps sending
+    // gameStarted for 30 s. This task is completely decoupled from messageHandler,
+    // so it survives the GameViewModel overwrite and delivers the message once
+    // MC's data channels finish negotiating (which can take 5–15 s).
+
+    private func pickTargetWordAndStart() {
         Task { @MainActor [weak self] in
-            guard let self else { return }
+            guard let self, !gameStarted else { return }
             let word = (try? await wordRepository.randomTargetWord(length: GameConfig.default.wordLength)) ?? "kitap"
-            pendingTargetWord = word
-            // If playerReady already arrived before word was picked, start now
-            if receivedPlayerReady, !gameStarted {
-                triggerGameStart()
+            guard !gameStarted else { return }  // re-check after async gap
+            gameStarted = true
+
+            guard let msg = try? PeerMessage.make(
+                GameStartedPayload(config: .default, targetWord: word,
+                                   hostID: settings.playerName, hostName: settings.playerName),
+                type: .gameStarted
+            ) else { return }
+
+            // Navigate host to game immediately.
+            if !didNavigateToGame {
+                didNavigateToGame = true
+                onGameReady?(word, .default, true)
             }
-        }
-    }
 
-    private func triggerGameStart() {
-        guard let word = pendingTargetWord, !gameStarted else { return }
-        gameStarted = true
-        // Important: Update phases so UI knows we are transitioning
-        phase = .connecting 
-        
-        // Use a background task to send multiple times to ensure delivery
-        Task.detached(priority: .high) { [weak self] in
-            guard let self else { return }
-            let payload = GameStartedPayload(
-                config: .default,
-                targetWord: word,
-                hostID: settings.playerName,
-                hostName: settings.playerName
-            )
-            let msg = (try? PeerMessage.make(payload, type: .gameStarted)) ?? PeerMessage(type: .gameStarted, payload: Data())
-            
-            // Send 3 times with small delays to ensure one gets through
-            for _ in 0..<3 {
-                try? self.sessionManager.send(msg)
-                try? await Task.sleep(nanoseconds: 200_000_000)
-            }
-        }
-        onGameReady?(word, .default, true)
-    }
-
-    // MARK: - Guest handshake
-
-    private func startSendingPlayerReady() {
-        playerReadyTask?.cancel()
-        playerReadyTask = Task { [weak self] in
-            // Wait 1s for MC channels to stabilise before first send
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
-
-            // Send every 600ms for up to ~20 seconds
-            for attempt in 0..<34 {
-                guard let self, !gameStarted else { return }
-                try? self.sessionManager.send(PeerMessage(type: .playerReady, payload: Data()))
-                try? await Task.sleep(nanoseconds: 600_000_000)
-
-                // After 10s with no response, show timeout error
-                if attempt == 16 {
-                    await MainActor.run { [weak self] in
-                        guard let self, !gameStarted, phase == .waitingForStart else { return }
-                        phase = .error("Oyun başlatılamadı. Tekrar deneyin.")
-                    }
-                    return
+            // Keep sending gameStarted in a fire-and-forget background task.
+            // Task.detached is intentional: we want this to outlive the LobbyViewModel
+            // and continue even after GameViewModel replaces the messageHandler.
+            // 60 attempts × 500 ms = 30 seconds of retrying.
+            let mgr = sessionManager
+            Task.detached(priority: .high) {
+                for _ in 0..<60 {
+                    mgr.trySend(msg)
+                    try? await Task.sleep(nanoseconds: 500_000_000)
                 }
+            }
+        }
+    }
+
+    // MARK: - Guest: wait passively for gameStarted with a 40-second timeout
+
+    private func startGuestWatchdog() {
+        guestWatchdogTask?.cancel()
+        guestWatchdogTask = Task { [weak self] in
+            // 40 seconds — enough for even the slowest MC channel negotiation
+            try? await Task.sleep(nanoseconds: 40_000_000_000)
+            await MainActor.run { [weak self] in
+                guard let self, !gameStarted, phase == .waitingForStart else { return }
+                phase = .error("Oyun başlatılamadı. Tekrar deneyin.")
             }
         }
     }

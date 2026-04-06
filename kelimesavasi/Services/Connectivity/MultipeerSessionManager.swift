@@ -17,8 +17,9 @@ final class MultipeerSessionManager: NSObject, ObservableObject {
     @Published var connectionState: ConnectionState = .disconnected
     @Published var lastError: String?
 
-    // Internal (not observed but updated on MainActor)
-    var messageHandler: ((PeerMessage) -> Void)?
+    /// All received peer messages are published here.
+    /// Any number of ViewModels can subscribe without overwriting each other.
+    let incomingMessages = PassthroughSubject<PeerMessage, Never>()
 
     @Published private(set) var session: MCSession?
     @Published private(set) var myPeerID: MCPeerID
@@ -30,31 +31,52 @@ final class MultipeerSessionManager: NSObject, ObservableObject {
     }
 
     func updatePlayerName(_ name: String) {
-        myPeerID = MCPeerID(displayName: name)
-        session?.disconnect()
+        if myPeerID.displayName != name {
+            myPeerID = MCPeerID(displayName: name)
+        }
         createSession()
     }
 
     private func createSession() {
+        if let old = session {
+            old.delegate = nil
+            old.disconnect()
+        }
         let s = MCSession(peer: myPeerID,
                           securityIdentity: nil,
-                          encryptionPreference: .none) // DTLS 'No route to host' ve 'SSLWrite failed' hatalarını tamamen önlemek için şifrelemeyi kapattık
+                          encryptionPreference: .none)
         s.delegate = self
         session = s
+        connectedPeers.removeAll()
+        connectionState = .disconnected
     }
 
     // MARK: - Sending
 
     func send(_ message: PeerMessage) throws {
-        guard let session, !session.connectedPeers.isEmpty else { return }
+        guard let session, !session.connectedPeers.isEmpty else {
+            throw NSError(domain: "MultipeerSessionManager", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "Not connected to any peers"])
+        }
         let data = try JSONEncoder().encode(message)
         try session.send(data, toPeers: session.connectedPeers, with: .reliable)
     }
 
     func disconnect() {
-        session?.disconnect()
         connectedPeers.removeAll()
         connectionState = .disconnected
+        session?.delegate = nil
+        session?.disconnect()
+        let s = MCSession(peer: myPeerID, securityIdentity: nil, encryptionPreference: .none)
+        s.delegate = self
+        session = s
+    }
+
+    @discardableResult
+    func trySend(_ message: PeerMessage) -> Bool {
+        guard let session, !session.connectedPeers.isEmpty,
+              let data = try? JSONEncoder().encode(message) else { return false }
+        return (try? session.send(data, toPeers: session.connectedPeers, with: .reliable)) != nil
     }
 }
 
@@ -83,10 +105,10 @@ extension MultipeerSessionManager: MCSessionDelegate {
     nonisolated func session(_ session: MCSession, didReceive data: Data,
                              fromPeer peerID: MCPeerID) {
         guard let message = try? JSONDecoder().decode(PeerMessage.self, from: data) else {
-            return  // invalid payload – ignore silently
+            return
         }
         Task { @MainActor [weak self] in
-            self?.messageHandler?(message)
+            self?.incomingMessages.send(message)
         }
     }
 

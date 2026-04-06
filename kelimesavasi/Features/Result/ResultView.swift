@@ -9,7 +9,7 @@ struct ResultView: View {
 
     private var headline: String {
         if result.mode == .solo {
-            return result.myPerformance.solved ? "Tebrikler! 🎉" : "Bilemedin 😔"
+            return result.myPerformance.solved ? "Seviye Atladın! 🎉" : "Bilemedin 😔"
         }
         if result.isDraw { return "Beraberlik 🤝" }
         return result.iWon ? "Kazandın! 🏆" : "Kaybettin 😔"
@@ -23,6 +23,13 @@ struct ResultView: View {
         return result.iWon ? AppTheme.Colors.correct : AppTheme.Colors.error
     }
 
+    private var subHeadline: String? {
+        if result.mode == .solo && result.myPerformance.solved {
+            return "Sıradaki seviyeye hazırsın!"
+        }
+        return nil
+    }
+
     @State private var hasRequestedRematch: Bool = false
     @State private var peerRequestedRematch: Bool = false
 
@@ -34,10 +41,18 @@ struct ResultView: View {
                 VStack(spacing: AppTheme.Spacing.lg) {
 
                     // Headline
-                    Text(headline)
-                        .font(.system(size: 32, weight: .black, design: .rounded))
-                        .foregroundStyle(headlineColor)
-                        .padding(.top, AppTheme.Spacing.xxl)
+                    VStack(spacing: 8) {
+                        Text(headline)
+                            .font(.system(size: 32, weight: .black, design: .rounded))
+                            .foregroundStyle(headlineColor)
+                        
+                        if let sub = subHeadline {
+                            Text(sub)
+                                .font(AppTheme.Font.body())
+                                .foregroundStyle(AppTheme.Colors.textSecondary)
+                        }
+                    }
+                    .padding(.top, AppTheme.Spacing.xxl)
 
                     if peerRequestedRematch {
                         Text("Rakip rövanş istiyor!")
